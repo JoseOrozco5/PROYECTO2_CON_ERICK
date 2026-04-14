@@ -361,7 +361,7 @@ void LCD_Bitmap(unsigned int x, unsigned int y, unsigned int width,
 	// Enviar datos en bloques si es posible
 	for (unsigned int i = 0; i < total_pixels; i++) {
 		uint16_t pixel = bitmap[i];
-		LCD_DATA(pixel >> 8);
+		LCD_DATA((pixel >> 8) & 0xFF);
 		LCD_DATA(pixel & 0xFF);
 	}
 	//HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_SET);

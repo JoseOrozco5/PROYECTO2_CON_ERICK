@@ -52,44 +52,25 @@ SPI_HandleTypeDef hspi1;
 
 TIM_HandleTypeDef htim1;
 
+UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
+UART_HandleTypeDef huart6;
 
 /* USER CODE BEGIN PV */
-int galaga[] = {659, 784, 880, 988, 1047, 988, 880, 784,
-	    659, 784, 880, 988, 1047, 988, 880, 784,
+extern const uint16_t fondo[];
+extern const uint16_t espacio[];
+extern const uint16_t inicio[];
+uint8_t accion[25];
+uint8_t indx = 0;
+uint8_t accionLista = 0;
+uint8_t rxByte;
 
-	    659, 784, 880, 988, 1047, 1175, 1047, 988,
-	    880, 784, 659, 784, 880, 988, 880, 784,
+uint8_t accion2[25];
+uint8_t indx2 = 0;
+uint8_t accion2Lista = 0;
+uint8_t rxByte2;
 
-	    659, 784, 880, 988, 1047, 988, 880, 784,
-	    659, 784, 880, 988, 1047, 988, 880, 784
-
-};
-
-int galaganoteDurations[] = {150,150,150,150,300,150,150,300,
-	    150,150,150,150,300,150,150,300,
-
-	    150,150,150,150,300,300,150,150,
-	    150,150,300,150,150,300,150,300,
-
-	    150,150,150,150,300,150,150,300,
-	    150,150,150,150,300,150,150,400
-
-};
-
-int STmelody [] = { 131, 165, 196, 247, 262, 247, 196, 165, 131, 165, 196, 247,
-		262, 247, 196, 165, 131, 165, 196, 247, 262, 247, 196, 165, 131, 165,
-		196, 247, 262, 247, 196, 165, 131, 165, 196, 247, 262, 247, 196, 165,
-		131, 165, 196, 247, 262, 247, 196, 165
-};
-
-int STnoteDurations [] = { 200, 200, 200, 200, 400, 200, 200, 400,
-		200, 200, 200, 200, 400, 200, 200, 400,
-		200, 200, 200, 200, 400, 200, 200, 400,
-		200, 200, 200, 200, 400, 200, 200, 400,
-		200, 200, 200, 200, 400, 200, 200, 400,
-		200, 200, 200, 200, 400, 200, 200, 400,
-};
+char Score[20];
 
 /* USER CODE END PV */
 
@@ -99,10 +80,18 @@ static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_USART1_UART_Init(void);
+static void MX_USART6_UART_Init(void);
 /* USER CODE BEGIN PFP */
 void playTone(int *tone, int *duration, int *pause, int size);
 int presForFrequency(int frequency);
 void noTone(void);
+void PantallaInicio(void);
+void JogaBonito(void);
+void Ganador_J1(void);
+void Ganador_J2(void);
+void Marco(void);
+void transicion(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -153,6 +142,100 @@ void noTone(void)
 {
 	__HAL_TIM_SET_PRESCALER(&htim1, 0);
 }
+
+void PantallaInicio(void)
+{
+	LCD_Bitmap(0, 0, 320, 240, inicio);
+
+	//Texto pantalla de inicio
+	LCD_Print("1UP", 10, 5, 1, 0xF800, 0x0000);
+	LCD_Print("00", 18, 15, 1, 0xFFFF, 0x0000);
+	LCD_Print("HIGH-SCORE", 110, 5, 1, 0xF800, 0x0000);
+	LCD_Print("30000", 123, 15, 1, 0xFFFF, 0x0000);
+	LCD_Print("2UP", 280, 5, 1, 0xF800, 0x0000);
+	LCD_Print("00", 288, 15, 1, 0xFFFF, 0x0000);
+	//Logo
+	LCD_Bitmap(80, 35, 160, 95, galagazo);
+	LCD_Print("1 PLAYER", 90, 140, 2, 0xFFFF, 0x0000);
+	LCD_Print("2 PLAYER", 90, 165, 2, 0xFFFF, 0x0000);
+	LCD_Print("Jose Orozco - 231093", 95, 205, 1, 0xFFFF, 0x0000);
+	LCD_Print("Erick Perez - 23001", 95, 225, 1, 0xFFFF, 0x0000);
+
+}
+
+void JogaBonito(void)
+{
+	LCD_Clear(0x00);
+	for (int y = 0; y < 240; y += 15){
+		LCD_Bitmap(160, y, 15, 15, tile);
+	}
+}
+
+void Marco(void)
+{
+	Rect(0, 0, 319, 239, 0x6000);
+	Rect(1, 1, 317, 237, 0xF800);
+	Rect(2, 2, 315, 235, 0xFFFF);
+	Rect(3, 3, 313, 233, 0xF800);
+}
+
+void Ganador_J1(void)
+{
+	LCD_Clear(0x0000);
+	Marco();
+
+	LCD_Print("1UP", 40, 10, 1, 0xF800, 0x0000);
+	sprintf(Score, "SCORE: %05d", 49480); // Ejemplo de score
+	//LCD_Print(Score, 35, 22, 1, 0x07FF, 0x0000); cuando ya este funcionando el juego usar esta
+	LCD_Print("123218", 35, 22, 1, 0x07FF, 0x0000);
+
+	LCD_Print("HIGH SCORE", 110, 10, 1, 0xF800, 0x0000);
+	//LCD_Print(Score, 35, 22, 1, 0x07FF, 0x0000); cuando ya este funcionando el juego usar esta
+	LCD_Print("123218", 130, 22, 1, 0x07FF, 0x0000);
+
+	LCD_Print("PLAYER 1 WINS", 60, 60, 2, 0xF800, 0x0000);
+
+	LCD_Print("TOP 5", 135, 150, 1, 0xFD20, 0x0000);
+	LCD_Print("SCORE", 110, 165, 1, 0x07FF, 0x0000);
+	LCD_Print("NAME", 185, 165, 1, 0x07FF, 0x0000);
+
+	LCD_Print("1ST  49480   JO", 80, 180, 1, 0xFFFF, 0x0000);
+	LCD_Print("2ND  20000   EP", 80, 192, 1, 0xFFFF, 0x0000);
+}
+
+void Ganador_J2(void)
+{
+	LCD_Clear(0x0000);
+	Marco();
+
+	LCD_Print("1UP", 40, 10, 1, 0xF800, 0x0000);
+	sprintf(Score, "SCORE: %05d", 49480); // Ejemplo de score
+	//LCD_Print(Score, 35, 22, 1, 0x07FF, 0x0000); cuando ya este funcionando el juego usar esta
+	LCD_Print("123218", 35, 22, 1, 0x07FF, 0x0000);
+
+	LCD_Print("HIGH SCORE", 110, 10, 1, 0xF800, 0x0000);
+	//LCD_Print(Score, 35, 22, 1, 0x07FF, 0x0000); cuando ya este funcionando el juego usar esta
+	LCD_Print("123218", 130, 22, 1, 0x07FF, 0x0000);
+
+	LCD_Print("PLAYER 2 WINS", 50, 60, 1, 0xF800, 0x0000);
+
+	LCD_Print("TOP 5", 135, 170, 1, 0xFD20, 0x0000);
+	LCD_Print("SCORE", 110, 185, 1, 0x07FF, 0x0000);
+	LCD_Print("NAME", 185, 185, 1, 0x07FF, 0x0000);
+
+	LCD_Print("1ST  49480   JO", 80, 200, 1, 0xFFFF, 0x0000);
+	LCD_Print("2ND  20000   EP", 80, 212, 1, 0xFFFF, 0x0000);
+}
+
+void transicion(void)
+{
+	int ancho = 20;
+	for (int i = 0; i < 320; i+= ancho){
+		FillRect(i, 0, ancho, 240, 0x0000);
+		HAL_Delay(15);
+	}
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -187,25 +270,98 @@ int main(void)
   MX_SPI1_Init();
   MX_TIM1_Init();
   MX_USART2_UART_Init();
+  MX_USART1_UART_Init();
+  MX_USART6_UART_Init();
   /* USER CODE BEGIN 2 */
+  HAL_UART_Receive_IT(&huart1, &rxByte, 1);
+  HAL_UART_Receive_IT(&huart6, &rxByte2, 1);
+  HAL_UART_Transmit(&huart2, (uint8_t*)"Sistema listo\r\n", 15, 1000);
   LCD_Init();
   LCD_Clear(0x00);
-  LCD_Print("Hola Mundo", 20, 100, 2, 0x001F, 0xCAB9);
+  //PantallaInicio();
+  Ganador_J1();
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_4);
-  //playTone(galaga, galaganoteDurations, NULL, (sizeof(galaga)/sizeof(galaga[0])));
-  //playTone(STmelody, STnoteDurations, NULL, (sizeof(STmelody)/sizeof(STmelody[0])));
-  //noTone();
+
   while (1)
   {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  playTone(STmelody, STnoteDurations, NULL, (sizeof(STmelody)/sizeof(STmelody[0])));
-	  noTone();
+
+	  if (accionLista){
+		  accionLista = 0;
+
+		  HAL_UART_Transmit(&huart2, (uint8_t*)"Control 1: ", 11, 1000);
+		  HAL_UART_Transmit(&huart2, accion, strlen((char*)accion), 1000);
+		  HAL_UART_Transmit(&huart2, (uint8_t*)"\r\n", 2, 1000);
+
+		  if (strcmp((char*)accion, "Izquierda") == 0){}
+		  else if (strcmp((char*)accion, "Izquierda_off") == 0){}
+		  else if (strcmp((char*)accion, "Derecha") == 0){}
+		  else if (strcmp((char*)accion, "Derecha_off") == 0){}
+		  else if (strcmp((char*)accion, "Accion A") == 0) {}
+		  else if (strcmp((char*)accion, "Accion A_off") == 0){}
+		  memset(accion, 0, sizeof(accion));
+		  indx = 0;
+	  }
+
+	  if(accion2Lista){
+		  accion2Lista = 0;
+
+		  HAL_UART_Transmit(&huart2, (uint8_t*)"Control 2: ", 11, 1000);
+		  HAL_UART_Transmit(&huart2, accion2, strlen((char*)accion2), 1000);
+		  HAL_UART_Transmit(&huart2, (uint8_t*)"\r\n", 2, 1000);
+
+		  if (strcmp((char*)accion2, "Izquierda") == 0){}
+		  else if (strcmp((char*)accion2, "Izquierda_off") == 0){}
+		  else if (strcmp((char*)accion2, "Derecha") == 0){}
+		  else if (strcmp((char*)accion2, "Derecha_off") == 0){}
+		  else if (strcmp((char*)accion2, "Accion A") == 0){}
+		  else if (strcmp((char*)accion2, "Accion A_off") == 0){}
+		  memset(accion2, 0, sizeof(accion2));
+		  indx2 = 0;
+	  }
+	  /*
+	  for (int x = 0; x < 100 - 69; x++){
+		  int anim = (x/10) % 3;
+		  LCD_Sprite(x, 150, 69, 68, otra, 3, anim, 0, 0);
+		  V_line(x-1, 50, 68,  0x00);
+		  HAL_Delay(15);
+	  }
+
+	  for (int var = 100 - 69; var > 0; var--){
+		  int anim = (var/10) % 3;
+		  LCD_Sprite(var, 150, 69, 68, otra, 3, anim, 1, 0);
+		  V_line(var + 69, 150, 68, 0x00);
+		  HAL_Delay(150);
+	  }
+
+	  for (int y = 0; y < 240 - 144; y++){
+		  int alien1 = (y/10)%9;
+		  LCD_Sprite(50, y, 17, 144, malo1, 9, alien1, 0, 1);
+		  V_line(50, y-1, 144,  0x00);
+		  HAL_Delay(15);
+	  }
+	  for (int x = 0; x < 319-24; x++) {
+	  					int anim = (x/10)%4;
+	  					// anim 0 1 2 3
+	  					LCD_Sprite(x, 100, 24, 30, porfa, 4, anim, 0, 0);
+	  					V_line( x -1, 100, 30, 0x0DFE);
+	  					HAL_Delay(15);
+
+	  				}
+	  				for (int var = 319-24; var > 0;  var--) {
+	  					int anim = (var / 10) % 4;
+	  					LCD_Sprite(var, 100, 24, 30, porfa, 4, anim, 1, 0);
+	  					V_line(var + 24, 100, 30, 0x0DFE);
+	  					HAL_Delay(15);
+	  				}
+	  */
   }
   /* USER CODE END 3 */
 }
@@ -370,6 +526,39 @@ static void MX_TIM1_Init(void)
 }
 
 /**
+  * @brief USART1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART1_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART1_Init 0 */
+
+  /* USER CODE END USART1_Init 0 */
+
+  /* USER CODE BEGIN USART1_Init 1 */
+
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 9600;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART1_Init 2 */
+
+  /* USER CODE END USART1_Init 2 */
+
+}
+
+/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -399,6 +588,39 @@ static void MX_USART2_UART_Init(void)
   /* USER CODE BEGIN USART2_Init 2 */
 
   /* USER CODE END USART2_Init 2 */
+
+}
+
+/**
+  * @brief USART6 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART6_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART6_Init 0 */
+
+  /* USER CODE END USART6_Init 0 */
+
+  /* USER CODE BEGIN USART6_Init 1 */
+
+  /* USER CODE END USART6_Init 1 */
+  huart6.Instance = USART6;
+  huart6.Init.BaudRate = 9600;
+  huart6.Init.WordLength = UART_WORDLENGTH_8B;
+  huart6.Init.StopBits = UART_STOPBITS_1;
+  huart6.Init.Parity = UART_PARITY_NONE;
+  huart6.Init.Mode = UART_MODE_RX;
+  huart6.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart6.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart6) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART6_Init 2 */
+
+  /* USER CODE END USART6_Init 2 */
 
 }
 
@@ -462,7 +684,32 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+	 if (huart->Instance == USART1){
+		 if (rxByte == '\n' || indx >= 24){
+			 accion[indx] = '\0';
+			 accionLista = 1;
+		 }
+		 else if (rxByte != '\r'){
+			 accion[indx] = rxByte;
+			 indx++;
+		 }
+		 HAL_UART_Receive_IT(&huart1, &rxByte, 1);
+	 }
 
+	 if (huart->Instance == USART6){
+		 if (rxByte2 == '\n' || indx2 >= 24){
+			 accion2[indx2] = '\0';
+			 accion2Lista = 1;
+		 }
+		 else if (rxByte2 != '\r'){
+			 accion2[indx2] = rxByte2;
+			 indx2++;
+		 }
+		 HAL_UART_Receive_IT(&huart6, &rxByte2, 1);
+	 }
+}
 /* USER CODE END 4 */
 
 /**
