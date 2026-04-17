@@ -32,7 +32,17 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+typedef struct{
+	float x, y;												//posicion
+	float x_base;											//centro de formacion
+	int vivo;												//1 alien vivo, 0 alien muerto
+	int tipo;												//tipo de alien (de los 4 sprites)
+	int w, h;												//width y height
+	int frame;												//animacion
+	float t;												//tiempo/anngulo para seno
+	float amplitud;											//q tan rapido se mueve el alien
+	float frecuencia; 										//q tan rapido oscila
+}Alien;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -72,6 +82,13 @@ uint8_t rxByte2;
 
 char Score[20];
 
+//-------Despliege de aliens----//
+#define MAX_ALIENS 7
+Alien Enemigos[MAX_ALIENS];
+int frameActual = 0;
+uint32_t timerAliens = 0;
+uint32_t timerAnimacionAliens = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -87,7 +104,9 @@ void playTone(int *tone, int *duration, int *pause, int size);
 int presForFrequency(int frequency);
 void noTone(void);
 void PantallaInicio(void);
-void JogaBonito(void);
+void InitEnemigos(int stage);
+void MoverAliens(void);
+void JogaBonito2(void);
 void Ganador_J1(void);
 void Ganador_J2(void);
 void Marco(void);
@@ -163,11 +182,100 @@ void PantallaInicio(void)
 
 }
 
-void JogaBonito(void)
+void JogaBonito2(void)
 {
-	LCD_Clear(0x00);
+	//LCD_Clear(0x00);
 	for (int y = 0; y < 240; y += 15){
 		LCD_Bitmap(160, y, 15, 15, tile);
+	}
+	// 152 - 17
+	for (int x = 0; x <=  128; x++) {
+		 int anim = (x/10)%3;
+		 //Nave lado izquierdo
+		 LCD_Sprite(x, 180, 17, 15, navesita, 3, anim, 0, 0, 0x0000);
+		 V_line(x - 1, 180, 15, 0x0000);
+		 //Nave lado derecho
+		 int x2 = 303 - x;
+		 LCD_Sprite(x2, 180, 17, 15, navesita, 3, anim, 1, 0, 0x0000);
+		 V_line(x2 + 17, 180, 15, 0x0000);
+		 HAL_Delay(15);
+
+	}
+	for (int var = 128; var >= 0;  var--) {
+		 int anim = (var / 10) % 3;
+		 //Nave lado izquierdo de regreso
+		 LCD_Sprite(var, 180, 17, 15, navesita, 3, anim, 1, 0, 0x0000);
+		 V_line(var + 17, 180, 15, 0x0000);
+		 //Nave lado derecho de regreso
+		 int var2 = 303 - var;
+		 LCD_Sprite(var2, 180, 17, 15, navesita, 3, anim, 0, 0, 0x0000);
+		 V_line(var2 - 1, 180, 15, 0x0000);
+		 HAL_Delay(15);
+	}
+}
+
+void InitEnemigos(int stage)
+{
+	int stages = (stage == 1) ? 2 : (stage == 2) ? 3 : 4;
+	for(int i = 0; i < MAX_ALIENS; i++){
+		Enemigos[i].x_base = 40 + (i * 35);
+		Enemigos[i].y = -20;					//aliens vienen de arriba (escondidos)
+		Enemigos[i].vivo = 1;
+		Enemigos[i].tipo = i % stages;
+		Enemigos[i].t = i * 0.5;
+		Enemigos[i].amplitud = 25.0;
+		Enemigos[i].frecuencia = 0.05;
+
+		switch(Enemigos[i].tipo)
+		{
+		case 0:								//alien verde
+			Enemigos[i].w = 19;
+			Enemigos[i].h = 17;
+			break;
+		case 1:								//alien rojo
+			Enemigos[i].w = 17;
+			Enemigos[i].h = 16;
+			break;
+		case 2:								//mosca
+			Enemigos[i].w = 17;
+			Enemigos[i].h = 14;
+			break;
+		case 3:								//alien azul
+			Enemigos[i].w = 19;
+			Enemigos[i].h = 17;
+			break;
+		}
+	}
+}
+
+void MoverAliens(void)
+{
+	for(int i = 0; i < MAX_ALIENS; i++){
+		if(Enemigos[i].vivo)
+		{
+			FillRect((int)Enemigos[i].x, (int)Enemigos[i].y, (int)Enemigos[i].w, (int)Enemigos[i].h, 0x0000); //limpiar rastro
+			Enemigos[i].y += 1.5;
+			Enemigos[i].t += Enemigos[i].frecuencia;
+			Enemigos[i].x = Enemigos[i].x_base + (sin(Enemigos[i].t) * Enemigos[i].amplitud);
+			const uint16_t *spriteActual;
+			if(Enemigos[i].tipo	== 0)
+			{
+				spriteActual = alien_verde;
+			}
+			else if(Enemigos[i].tipo == 1)
+			{
+				spriteActual = alien_rojo;
+			}
+			else if(Enemigos[i].tipo == 2)
+			{
+				spriteActual = mosca;
+			}
+			else
+			{
+				spriteActual = alien_azul;
+			}
+			LCD_Sprite((int)Enemigos[i].x, (int)Enemigos[i].y, (int)Enemigos[i].w, (int)Enemigos[i].h, spriteActual, 8, frameActual, 0, 0, 0x0000);
+		}
 	}
 }
 
@@ -193,7 +301,7 @@ void Ganador_J1(void)
 	//LCD_Print(Score, 35, 22, 1, 0x07FF, 0x0000); cuando ya este funcionando el juego usar esta
 	LCD_Print("123218", 130, 22, 1, 0x07FF, 0x0000);
 
-	LCD_Print("PLAYER 1 WINS", 60, 60, 2, 0xF800, 0x0000);
+	LCD_Print("PLAYER 1 WINS", 60, 75, 2, 0xF800, 0x0000);
 
 	LCD_Print("TOP 5", 135, 150, 1, 0xFD20, 0x0000);
 	LCD_Print("SCORE", 110, 165, 1, 0x07FF, 0x0000);
@@ -217,14 +325,14 @@ void Ganador_J2(void)
 	//LCD_Print(Score, 35, 22, 1, 0x07FF, 0x0000); cuando ya este funcionando el juego usar esta
 	LCD_Print("123218", 130, 22, 1, 0x07FF, 0x0000);
 
-	LCD_Print("PLAYER 2 WINS", 50, 60, 1, 0xF800, 0x0000);
+	LCD_Print("PLAYER 2 WINS", 60, 75, 2, 0xF800, 0x0000);
 
-	LCD_Print("TOP 5", 135, 170, 1, 0xFD20, 0x0000);
-	LCD_Print("SCORE", 110, 185, 1, 0x07FF, 0x0000);
-	LCD_Print("NAME", 185, 185, 1, 0x07FF, 0x0000);
+	LCD_Print("TOP 5", 135, 150, 1, 0xFD20, 0x0000);
+	LCD_Print("SCORE", 110, 165, 1, 0x07FF, 0x0000);
+	LCD_Print("NAME", 185, 165, 1, 0x07FF, 0x0000);
 
-	LCD_Print("1ST  49480   JO", 80, 200, 1, 0xFFFF, 0x0000);
-	LCD_Print("2ND  20000   EP", 80, 212, 1, 0xFFFF, 0x0000);
+	LCD_Print("1ST  49480   JO", 80, 180, 1, 0xFFFF, 0x0000);
+	LCD_Print("2ND  68929   EP", 80, 192, 1, 0xFFFF, 0x0000);
 }
 
 void transicion(void)
@@ -278,8 +386,11 @@ int main(void)
   HAL_UART_Transmit(&huart2, (uint8_t*)"Sistema listo\r\n", 15, 1000);
   LCD_Init();
   LCD_Clear(0x00);
+  InitEnemigos(1);
   //PantallaInicio();
-  Ganador_J1();
+  //Ganador_J1();
+  //Ganador_J2();
+
 
   /* USER CODE END 2 */
 
@@ -292,6 +403,19 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+
+	  uint32_t tick = HAL_GetTick();
+	  if(tick - timerAliens >= 30)						//los aliens se actualizan cada 30 ms, lo q da 33FPS
+	  {
+	 	  MoverAliens();
+		  timerAliens = tick;
+	  }
+	  if(tick - timerAnimacionAliens >= 200)
+	  {
+		  frameActual = (frameActual + 1) % 8;
+		  timerAnimacionAliens = tick;
+
+	  }
 
 	  if (accionLista){
 		  accionLista = 0;
@@ -327,6 +451,15 @@ int main(void)
 		  indx2 = 0;
 	  }
 	  /*
+	  if (accionLista && strcmp((char*)accion, "Accion A") == 0) {
+	      accionLista = 0;
+	      transicion();  // Tu cortina negra
+	      LCD_Clear(0x0000);
+	      // Aquí puedes poner un flag como "bool jugando = true;"
+	  }
+	  */
+	  //JogaBonito2();
+	  /*
 	  for (int x = 0; x < 100 - 69; x++){
 		  int anim = (x/10) % 3;
 		  LCD_Sprite(x, 150, 69, 68, otra, 3, anim, 0, 0);
@@ -347,21 +480,21 @@ int main(void)
 		  V_line(50, y-1, 144,  0x00);
 		  HAL_Delay(15);
 	  }
-	  for (int x = 0; x < 319-24; x++) {
-	  					int anim = (x/10)%4;
-	  					// anim 0 1 2 3
-	  					LCD_Sprite(x, 100, 24, 30, porfa, 4, anim, 0, 0);
-	  					V_line( x -1, 100, 30, 0x0DFE);
-	  					HAL_Delay(15);
+	  for (int x = 0; x < 152-17; x++) {
+	  		int anim = (x/10)%3;
+	  		// anim 0 1 2 3
+	  		LCD_Sprite(x, 180, 17, 15, navesita, 3, anim, 0, 0, 0x0000);
+	  		V_line(x - 1, 180, 15, 0x0000);
+	  		HAL_Delay(15);
 
-	  				}
-	  				for (int var = 319-24; var > 0;  var--) {
-	  					int anim = (var / 10) % 4;
-	  					LCD_Sprite(var, 100, 24, 30, porfa, 4, anim, 1, 0);
-	  					V_line(var + 24, 100, 30, 0x0DFE);
-	  					HAL_Delay(15);
-	  				}
-	  */
+	  	}
+	  for (int var = 152 - 17; var > 0;  var--) {
+	  		int anim = (var / 10) % 3;
+	  		LCD_Sprite(var, 180, 17, 15, navesita, 3, anim, 1, 0, 0x0000);
+	  		V_line(var + 17, 180, 15, 0x0000);
+	  		HAL_Delay(15);
+	  	}
+	  	*/
   }
   /* USER CODE END 3 */
 }

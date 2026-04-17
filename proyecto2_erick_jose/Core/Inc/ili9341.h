@@ -28,6 +28,8 @@ void LCD_Bitmap(unsigned int x, unsigned int y, unsigned int width, unsigned int
 void LCD_BitmapTransparent(uint16_t x, uint16_t y, uint16_t width, uint16_t height, const uint16_t *bitmap, uint16_t transparentColor);
 void LCD_BitmapFast(unsigned int x, unsigned int y, unsigned int width, unsigned int height, const uint8_t *bitmap);
 void LCD_Sprite(int x, int y, int width, int height, const uint16_t *bitmap,
-                int columns, int index, char flip, char offset);
+                int columns, int index, char flip, char offset, uint16_t color_fondo);
+void LCD_SpriteY(int x, int y, int width, int height, const uint16_t *bitmap,
+				int columns, int index, int col, uint16_t color_fondo);
 
 #endif /* INC_ILI9341_H_ */

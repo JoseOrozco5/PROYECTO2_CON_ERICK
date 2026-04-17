@@ -238,6 +238,7 @@ void V_line(unsigned int x, unsigned int y, unsigned int l, unsigned int c) {
 	SetWindows(x, y, x, y + l);
 	//j = l; //* 2;
 	for (i = 1; i <= l; i++) {
+		uint16_t c = 0x0000;
 		LCD_DATA(c >> 8);
 		LCD_DATA(c);
 	}
@@ -394,7 +395,7 @@ void LCD_BitmapTransparent(uint16_t x, uint16_t y, uint16_t width,
 // Función para dibujar una imagen sprite - los parámetros columns = número de imagenes en el sprite, index = cual desplegar, flip = darle vuelta
 //***************************************************************************************************************************************
 void LCD_Sprite(int x, int y, int width, int height, const uint16_t *bitmap,
-		int columns, int index, char flip, char offset) {
+		int columns, int index, char flip, char offset, uint16_t color_fondo) {
 	//LCD_CMD(0x02c); // write_memory_start
 	//	HAL_GPIO_WritePin(LCD_DC_GPIO_Port, LCD_DC_Pin, GPIO_PIN_SET);
 	//	HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_RESET);
@@ -412,6 +413,9 @@ void LCD_Sprite(int x, int y, int width, int height, const uint16_t *bitmap,
 			k = k + width;
 			for (int i = 0; i < width; i++) {
 				uint16_t pixel = bitmap[k];
+				if (pixel == color_fondo){
+					pixel = 0x0000;
+				}
 				LCD_DATA(pixel >> 8);
 				LCD_DATA(pixel & 0xFF);
 				k--;
@@ -430,6 +434,26 @@ void LCD_Sprite(int x, int y, int width, int height, const uint16_t *bitmap,
 	}
 
 	//HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_SET);
+	LCD_CS_H();
+}
+
+void LCD_SpriteY(int x, int y, int width, int height, const uint16_t *bitmap,
+				int columns, int index, int col, uint16_t color_fondo) {
+	LCD_DC_H();
+	LCD_CS_L();
+	SetWindows(x, y, x, y + height - 1);
+
+	int ancho = width * columns;
+
+	for(int j = 0; j < height; j++){
+		int k =  j * ancho + index * width + col;
+		uint16_t pixel = bitmap[k];
+		if(pixel == color_fondo){
+			pixel = 0x0000;
+		}
+		LCD_DATA(pixel >> 8);
+		LCD_DATA(pixel & 0xFF);
+	}
 	LCD_CS_H();
 }
 
