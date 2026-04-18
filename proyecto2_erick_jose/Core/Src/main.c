@@ -32,9 +32,18 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+typedef enum{
+	ENTRANDO,
+	FORMACION//,
+	//INACTIVO,
+	//ENTRADA_SENO,
+	//ENTRADA_LOOP,
+	//ATAQUE
+}EstadoAlien;
+
 typedef struct{
 	float x, y;												//posicion
-	float x_base;											//centro de formacion
+	float x_base, y_base;									//centro de formacion
 	int vivo;												//1 alien vivo, 0 alien muerto
 	int tipo;												//tipo de alien (de los 4 sprites)
 	int w, h;												//width y height
@@ -42,7 +51,9 @@ typedef struct{
 	float t;												//tiempo/anngulo para seno
 	float amplitud;											//q tan rapido se mueve el alien
 	float frecuencia; 										//q tan rapido oscila
+	EstadoAlien estado;
 }Alien;
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -83,11 +94,14 @@ uint8_t rxByte2;
 char Score[20];
 
 //-------Despliege de aliens----//
-#define MAX_ALIENS 7
+#define MAX_ALIENS 8
 Alien Enemigos[MAX_ALIENS];
 int frameActual = 0;
 uint32_t timerAliens = 0;
 uint32_t timerAnimacionAliens = 0;
+int AlienActual = 0;
+uint32_t tiempoSpawn = 0;
+static float vaiven = 0;
 
 /* USER CODE END PV */
 
@@ -218,13 +232,23 @@ void InitEnemigos(int stage)
 {
 	int stages = (stage == 1) ? 2 : (stage == 2) ? 3 : 4;
 	for(int i = 0; i < MAX_ALIENS; i++){
-		Enemigos[i].x_base = 40 + (i * 35);
+		Enemigos[i].x_base = 60 + (i * 25);
+		Enemigos[i].y_base = 80;
+		Enemigos[i].x = Enemigos[i].x_base;
 		Enemigos[i].y = -20;					//aliens vienen de arriba (escondidos)
-		Enemigos[i].vivo = 1;
+		Enemigos[i].vivo = 0;					//spawn secuencial
 		Enemigos[i].tipo = i % stages;
-		Enemigos[i].t = i * 0.5;
-		Enemigos[i].amplitud = 25.0;
+		Enemigos[i].t = 0;
+		Enemigos[i].amplitud = 40.0;
 		Enemigos[i].frecuencia = 0.05;
+		Enemigos[i].estado = ENTRANDO;
+
+		if( i < 4)
+		{
+			Enemigos[i].tipo = 0;
+		}else{
+			Enemigos[i].tipo = 1;
+		}
 
 		switch(Enemigos[i].tipo)
 		{
@@ -250,13 +274,43 @@ void InitEnemigos(int stage)
 
 void MoverAliens(void)
 {
+	vaiven += 0.02;
+	float offsetFormacion = sin(vaiven) * 15;
+
+
 	for(int i = 0; i < MAX_ALIENS; i++){
 		if(Enemigos[i].vivo)
 		{
-			FillRect((int)Enemigos[i].x, (int)Enemigos[i].y, (int)Enemigos[i].w, (int)Enemigos[i].h, 0x0000); //limpiar rastro
-			Enemigos[i].y += 1.5;
-			Enemigos[i].t += Enemigos[i].frecuencia;
-			Enemigos[i].x = Enemigos[i].x_base + (sin(Enemigos[i].t) * Enemigos[i].amplitud);
+			FillRect((int)Enemigos[i].x, (int)Enemigos[i].y, (int)Enemigos[i].w, (int)Enemigos[i].h, 0x0000);
+			int FrameADibujar = frameActual;
+
+			switch(Enemigos[i].estado)
+			{
+			case ENTRANDO:
+				Enemigos[i].y += 1.8;
+				float inicio_alien = (Enemigos[i].tipo == 0) ? 150 : 170;
+				float progreso = (Enemigos[i].y + 20.0) / (Enemigos[i].y_base + 20);
+				if (progreso > 1.0){
+					progreso = 1.0;
+				}
+				float centro_x = inicio_alien + (Enemigos[i].x_base - inicio_alien) * progreso;
+				float zigzag = sin(Enemigos[i].y * 0.04) * Enemigos[i].amplitud;
+				Enemigos[i].x = centro_x + zigzag;
+
+				if(Enemigos[i].y >= Enemigos[i].y_base)
+				{
+					Enemigos[i].y = Enemigos[i].y_base;
+					Enemigos[i].estado = FORMACION;
+				}
+				break;
+			case FORMACION:
+				Enemigos[i].x = Enemigos[i].x_base + offsetFormacion;
+				Enemigos[i].y = Enemigos[i].y_base;
+				FrameADibujar = frameActual % 2;
+				break;
+			}
+
+
 			const uint16_t *spriteActual;
 			if(Enemigos[i].tipo	== 0)
 			{
@@ -274,7 +328,7 @@ void MoverAliens(void)
 			{
 				spriteActual = alien_azul;
 			}
-			LCD_Sprite((int)Enemigos[i].x, (int)Enemigos[i].y, (int)Enemigos[i].w, (int)Enemigos[i].h, spriteActual, 8, frameActual, 0, 0, 0x0000);
+			LCD_Sprite((int)Enemigos[i].x, (int)Enemigos[i].y, (int)Enemigos[i].w, (int)Enemigos[i].h, spriteActual, 8, FrameADibujar, 0, 0, 0x0000);
 		}
 	}
 }
@@ -405,6 +459,14 @@ int main(void)
     /* USER CODE BEGIN 3 */
 
 	  uint32_t tick = HAL_GetTick();
+	  if(tick - tiempoSpawn >= 800 && AlienActual < MAX_ALIENS)
+	  {
+		  Enemigos[AlienActual].vivo = 1;
+		  Enemigos[AlienActual].y = -20;
+		  AlienActual++;
+		  tiempoSpawn = tick;
+	  }
+
 	  if(tick - timerAliens >= 30)						//los aliens se actualizan cada 30 ms, lo q da 33FPS
 	  {
 	 	  MoverAliens();
