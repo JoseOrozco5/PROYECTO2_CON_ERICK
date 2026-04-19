@@ -156,8 +156,8 @@ static float vaiven = 0;
 
 //---Disparo de naves/aliens---//
 #define MAX_BALAS 5
-disparo_J1[MAX_BALAS];
-disparo_J2[MAX_BALAS];
+Bala disparo_J1[MAX_BALAS];
+Bala disparo_J2[MAX_BALAS];
 uint32_t timerBalas = 0;
 
 /* USER CODE END PV */
@@ -175,11 +175,13 @@ void playTone(int *tone, int *duration, int *pause, int size);
 int presForFrequency(int frequency);
 void noTone(void);
 void PantallaInicio(void);
+void Dibujar(void);
 void InitEnemigos(int stage);
 void MoverAliens(void);
 void MoverNaves(void);
 void InitJuego1(void);
-void JogaBonito1(void);
+void Disparar(int jugador);
+void ActualizarBalas(void);
 void InitJuego2(void);
 void JogaBonito2(void);
 void Ganador_J1(void);
@@ -281,37 +283,12 @@ void InitJuego2(void)
 	J2.w = 17;
 	J2.h = 15;
 	J2.vivo = 1;
-
+	/*
 	for (int y = 0; y < 240; y += 15){
 		LCD_Bitmap(160, y, 15, 15, tile);
 	}
-	InitEnemigos(1);
-	/*
-	// 152 - 17
-	for (int x = 0; x <=  128; x++) {
-		 int anim = (x/10)%3;
-		 //Nave lado izquierdo
-		 LCD_Sprite(x, 180, 17, 15, navesita, 3, anim, 0, 0, 0x0000);
-		 V_line(x - 1, 180, 15, 0x0000);
-		 //Nave lado derecho
-		 int x2 = 303 - x;
-		 LCD_Sprite(x2, 180, 17, 15, navesita, 3, anim, 1, 0, 0x0000);
-		 V_line(x2 + 17, 180, 15, 0x0000);
-		 HAL_Delay(15);
-
-	}
-	for (int var = 128; var >= 0;  var--) {
-		 int anim = (var / 10) % 3;
-		 //Nave lado izquierdo de regreso
-		 LCD_Sprite(var, 180, 17, 15, navesita, 3, anim, 1, 0, 0x0000);
-		 V_line(var + 17, 180, 15, 0x0000);
-		 //Nave lado derecho de regreso
-		 int var2 = 303 - var;
-		 LCD_Sprite(var2, 180, 17, 15, navesita, 3, anim, 0, 0, 0x0000);
-		 V_line(var2 - 1, 180, 15, 0x0000);
-		 HAL_Delay(15);
-	}
 	*/
+	InitEnemigos(1);
 }
 
 void InitEnemigos(int stage)
@@ -319,13 +296,22 @@ void InitEnemigos(int stage)
 	int stages = (stage == 1) ? 2 : (stage == 2) ? 3 : 4;
 	int aliensPorTipo = MAX_ALIENS / stages;
 	for(int i = 0; i < MAX_ALIENS; i++){
-		Enemigos[i].x_base = 60 + (i * 25);
+		if(modoActual == ESTADO_JUG2){
+			if(i < 4){
+				Enemigos[i].x_base = 20 + (i * 30);
+			}else{
+				Enemigos[i].x_base = 180 + ((i - 4) * 30);
+				Enemigos[i].amplitud = 15.0;
+			}
+		}else{
+			Enemigos[i].x_base = 60 + (i * 25);
+			Enemigos[i].amplitud = 40.0;
+		}
 		Enemigos[i].y_base = 80;
 		Enemigos[i].x = Enemigos[i].x_base;
 		Enemigos[i].y = -20;					//aliens vienen de arriba (escondidos)
 		Enemigos[i].vivo = 0;					//spawn secuencial
 		Enemigos[i].t = 0;
-		Enemigos[i].amplitud = 40.0;
 		Enemigos[i].frecuencia = 0.05;
 		Enemigos[i].estado = ENTRANDO;
 		Enemigos[i].tipo = i / aliensPorTipo;
@@ -457,6 +443,56 @@ void Marco(void)
 	Rect(1, 1, 317, 237, 0xF800);
 	Rect(2, 2, 315, 235, 0xFFFF);
 	Rect(3, 3, 313, 233, 0xF800);
+}
+
+void Dibujar(void)
+{
+	if(modoActual == ESTADO_JUG1)
+	{
+		LCD_Print("1UP", 5, 2, 1, 0xF800, 0x0000);
+		LCD_Print("00", 8, 12, 1, 0xFFFF, 0x0000);
+		LCD_Print("HIGH SCORE", 240, 2, 1, 0xF800, 0x0000);
+		LCD_Print("20000", 260, 12, 1, 0xFFFF, 0x0000);
+	}else if(modoActual == ESTADO_JUG2){
+		LCD_Print("1UP", 14, 2, 1, 0xF800, 0x0000);
+		LCD_Print("00", 18, 12, 1, 0xFFFF, 0x0000);
+		LCD_Print("2UP", 300, 2, 1, 0xF800, 0x0000);
+		LCD_Print("00", 290, 12, 1, 0xFFFF, 0x0000);
+	}
+}
+
+void Disparar(int jugador)
+{
+	Bala* lista = (jugador == 1) ? disparo_J1 : disparo_J2;
+	Nave* n = (jugador == 1) ? &J1 : &J2;
+
+	for(int i = 0; i < MAX_BALAS; i++){
+		if(!lista[i].activo){
+			lista[i].x = n->x + (n->w / 2) - 1;
+			lista[i].y = n->y - 5;
+			lista[i].activo = 1;
+			break;
+		}
+	}
+
+}
+
+void ActualizarBalas(void)
+{
+	for(int j = 1; j <= 2; j++){
+		Bala* lista = (j == 1) ? disparo_J1 : disparo_J2;
+		for(int i = 0; i < MAX_BALAS; i++){
+			if(lista[i].activo){
+				FillRect((int)lista[i].x, (int)lista[i].y, 5, 10, 0x0000);
+				lista[i].y -= 5.0;
+				if(lista[i].y < 14){
+					lista[i].activo = 0;
+				}else{
+					LCD_Sprite((int)lista[i].x, (int)lista[i].y, 5, 10, disparo_nave, 2, 0, 0, 0, 0x0000);
+				}
+			}
+		}
+	}
 }
 
 void Ganador_J1(void)
@@ -610,8 +646,10 @@ int main(void)
 		  		  InitJuego2();
 		  		  modoActual = ESTADO_JUG2;
 		  	  }
+		  	  Dibujar();
 		  }
 		  break;
+
 	  case ESTADO_JUG1:
 		  if(tick - timerAliens >= 40)						//los aliens se actualizan cada 30 ms, lo q da 33FPS
 		  {
@@ -621,7 +659,16 @@ int main(void)
 		  if(tick - timerNaves >= 20)
 		  {
 			  MoverNaves();
+			  if(nave1_dis){
+				  Disparar(1);
+				  nave1_dis = 0;
+			  }
 			  timerNaves = tick;
+		  }
+		  if(tick - timerBalas >= 15)
+		  {
+		 	  ActualizarBalas();
+		 	  timerBalas = tick;
 		  }
 		  if(tick - timerAnimacionAliens >= 200)
 		  {
@@ -637,28 +684,43 @@ int main(void)
 		  }
 		  break;
 	  case ESTADO_JUG2:
+		  if(tick - timerAliens >= 40){
+			  MoverAliens();
+			  timerAliens = tick;
+		  }
+		  if(tick - timerNaves >= 20){
+			  MoverNaves();
+			  if(nave1_dis){
+				  Disparar(1);
+				  nave1_dis = 0;
+			  }
+			  if(modoActual == ESTADO_JUG2 && nave2_dis){
+				  Disparar(2);
+				  nave2_dis = 0;
+			  }
+			  timerNaves = tick;
+		  }
+		  if(tick - timerBalas >= 15)
+		  {
+			  ActualizarBalas();
+			  timerBalas = tick;
+		  }
+		  if(tick - timerAnimacionAliens >= 200)
+		  {
+			  frameActual = (frameActual + 1) % 8;
+			  timerAnimacionAliens = tick;
+		  }
+		  if(tick - tiempoSpawn >= 800 && AlienActual < MAX_ALIENS)
+		  {
+			  Enemigos[AlienActual].vivo = 1;
+			  Enemigos[AlienActual].y = -20;
+			  AlienActual++;
+			  tiempoSpawn = tick;
+		  }
 		  break;
 	  case ESTADO_VICTORIA:
 		  break;
 	  }
-
-
-
-
-
-
-
-	  if (nave1_dis){ /* nave 1 dispara        */ }
-	  if (nave1_sel){ /* nave 1 dispara        */ }
-	  if (nave1_arr){ /* nave 1 dispara        */ }
-	  if (nave1_abj){ /* nave 1 dispara        */ }
-
-	  if (nave2_izq){ /* mover nave 2 izquierda */ }
-	  if (nave2_der){ /* mover nave 2 derecha   */ }
-	  if (nave2_dis){ /* nave 2 dispara         */ }
-	  if (nave2_sel){ /* nave 2 dispara         */ }
-	  if (nave2_arr){ /* nave 2 dispara         */ }
-	  if (nave2_abj){ /* nave 2 dispara         */ }
 
 
 
