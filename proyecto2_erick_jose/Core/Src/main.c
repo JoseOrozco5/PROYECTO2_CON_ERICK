@@ -33,6 +33,25 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 typedef enum{
+	ESTADO_MENU,
+	ESTADO_JUG1,
+	ESTADO_JUG2,
+	ESTADO_VICTORIA
+}GameState;
+
+typedef struct{
+	float x, y;
+	int w, h;
+	int vivo;
+	int frame;
+}Nave;
+
+typedef struct{
+	float x, y;
+	int activo;
+}Bala;
+
+typedef enum{
 	ENTRANDO,
 	FORMACION//,
 	//INACTIVO,
@@ -61,6 +80,18 @@ typedef struct{
 #define TIM_FREQ 84000000
 //#define ARR 100
 #define TIM_ARR_VAL 100
+#define CMD_IZQ      0x01
+#define CMD_IZQ_OFF  0x02
+#define CMD_DER      0x03
+#define CMD_DER_OFF  0x04
+#define CMD_DIS      0x05
+#define CMD_DIS_OFF  0x06
+#define CMD_SEL		 0x07
+#define CMD_SEL_OFF  0x08
+#define CMD_ARR      0x09
+#define CMD_ARR_OFF  0x0A
+#define CMD_ABJ      0x0B
+#define CMD_ABJ_OFF  0x0C
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -81,16 +112,36 @@ UART_HandleTypeDef huart6;
 extern const uint16_t fondo[];
 extern const uint16_t espacio[];
 extern const uint16_t inicio[];
-uint8_t accion[25];
-uint8_t indx = 0;
-uint8_t accionLista = 0;
-uint8_t rxByte;
 
-uint8_t accion2[25];
-uint8_t indx2 = 0;
-uint8_t accion2Lista = 0;
+//-----------Menu-------------//
+GameState modoActual = ESTADO_MENU;
+int SeleccionMenu = 0;
+Nave J1, J2;
+uint32_t timerNaves = 0;
+static int seleccionPrevia = -1;
+
+//---------Controles---------//
+uint8_t rxByte1;
+
+
 uint8_t rxByte2;
 
+volatile uint8_t nave1_izq = 0;
+volatile uint8_t nave1_der = 0;
+volatile uint8_t nave1_dis = 0;
+volatile uint8_t nave1_sel = 0;
+volatile uint8_t nave1_arr = 0;
+volatile uint8_t nave1_abj = 0;
+
+volatile uint8_t nave2_izq = 0;
+volatile uint8_t nave2_der = 0;
+volatile uint8_t nave2_dis = 0;
+volatile uint8_t nave2_sel = 0;
+volatile uint8_t nave2_arr = 0;
+volatile uint8_t nave2_abj = 0;
+
+
+//-------Puntaje----------------//
 char Score[20];
 
 //-------Despliege de aliens----//
@@ -102,6 +153,12 @@ uint32_t timerAnimacionAliens = 0;
 int AlienActual = 0;
 uint32_t tiempoSpawn = 0;
 static float vaiven = 0;
+
+//---Disparo de naves/aliens---//
+#define MAX_BALAS 5
+disparo_J1[MAX_BALAS];
+disparo_J2[MAX_BALAS];
+uint32_t timerBalas = 0;
 
 /* USER CODE END PV */
 
@@ -120,6 +177,10 @@ void noTone(void);
 void PantallaInicio(void);
 void InitEnemigos(int stage);
 void MoverAliens(void);
+void MoverNaves(void);
+void InitJuego1(void);
+void JogaBonito1(void);
+void InitJuego2(void);
 void JogaBonito2(void);
 void Ganador_J1(void);
 void Ganador_J2(void);
@@ -196,12 +257,36 @@ void PantallaInicio(void)
 
 }
 
-void JogaBonito2(void)
+void InitJuego1(void)
+{
+	J1.x = 152;
+	J1.y = 210;
+	J1.w = 17;
+	J1.h = 15;
+	J1.vivo = 1;
+	InitEnemigos(1);
+}
+
+void InitJuego2(void)
 {
 	//LCD_Clear(0x00);
+	J1.x = 70;
+	J1.y = 210;
+	J1.w = 17;
+	J1.h = 15;
+	J1.vivo = 1;
+
+	J2.x = 230;
+	J2.y = 210;
+	J2.w = 17;
+	J2.h = 15;
+	J2.vivo = 1;
+
 	for (int y = 0; y < 240; y += 15){
 		LCD_Bitmap(160, y, 15, 15, tile);
 	}
+	InitEnemigos(1);
+	/*
 	// 152 - 17
 	for (int x = 0; x <=  128; x++) {
 		 int anim = (x/10)%3;
@@ -226,28 +311,28 @@ void JogaBonito2(void)
 		 V_line(var2 - 1, 180, 15, 0x0000);
 		 HAL_Delay(15);
 	}
+	*/
 }
 
 void InitEnemigos(int stage)
 {
 	int stages = (stage == 1) ? 2 : (stage == 2) ? 3 : 4;
+	int aliensPorTipo = MAX_ALIENS / stages;
 	for(int i = 0; i < MAX_ALIENS; i++){
 		Enemigos[i].x_base = 60 + (i * 25);
 		Enemigos[i].y_base = 80;
 		Enemigos[i].x = Enemigos[i].x_base;
 		Enemigos[i].y = -20;					//aliens vienen de arriba (escondidos)
 		Enemigos[i].vivo = 0;					//spawn secuencial
-		Enemigos[i].tipo = i % stages;
 		Enemigos[i].t = 0;
 		Enemigos[i].amplitud = 40.0;
 		Enemigos[i].frecuencia = 0.05;
 		Enemigos[i].estado = ENTRANDO;
+		Enemigos[i].tipo = i / aliensPorTipo;
 
-		if( i < 4)
+		if(Enemigos[i].tipo >= stages)
 		{
-			Enemigos[i].tipo = 0;
-		}else{
-			Enemigos[i].tipo = 1;
+			Enemigos[i].tipo = stages - 1;
 		}
 
 		switch(Enemigos[i].tipo)
@@ -287,14 +372,16 @@ void MoverAliens(void)
 			switch(Enemigos[i].estado)
 			{
 			case ENTRANDO:
-				Enemigos[i].y += 1.8;
-				float inicio_alien = (Enemigos[i].tipo == 0) ? 150 : 170;
+				Enemigos[i].y += 1.6;
+				//float inicio_alien = (Enemigos[i].tipo == 0) ? 140 : 180;
+				float inicio_alien = 140 + (Enemigos[i].tipo * 20);
+				float lado = (Enemigos[i].tipo == 0) ? 1.0 : -1.0;
 				float progreso = (Enemigos[i].y + 20.0) / (Enemigos[i].y_base + 20);
 				if (progreso > 1.0){
 					progreso = 1.0;
 				}
 				float centro_x = inicio_alien + (Enemigos[i].x_base - inicio_alien) * progreso;
-				float zigzag = sin(Enemigos[i].y * 0.04) * Enemigos[i].amplitud;
+				float zigzag = lado * sin(Enemigos[i].y * 0.04) * Enemigos[i].amplitud;
 				Enemigos[i].x = centro_x + zigzag;
 
 				if(Enemigos[i].y >= Enemigos[i].y_base)
@@ -330,6 +417,37 @@ void MoverAliens(void)
 			}
 			LCD_Sprite((int)Enemigos[i].x, (int)Enemigos[i].y, (int)Enemigos[i].w, (int)Enemigos[i].h, spriteActual, 8, FrameADibujar, 0, 0, 0x0000);
 		}
+	}
+}
+
+void MoverNaves(void)
+{
+	if(J1.vivo)
+	{
+		FillRect((int)J1.x, (int)J1.y, J1.w, J1.h, 0x0000);
+		 if (nave1_izq && J1.x > 0){
+			 J1.x -= 2.5;
+		 }
+		 if (nave1_der){
+			 float limite = (modoActual == ESTADO_JUG2) ? 143 : 303;
+			 if(J1.x < limite)
+			 {
+				 J1.x += 2.5;
+			 }
+		 }
+		 LCD_Sprite((int)J1.x, (int)J1.y, J1.w, J1.h, navesita, 3, frameActual % 3, 0, 0, 0x0000);
+	}
+
+	if(modoActual == ESTADO_JUG2 && J2.vivo)
+	{
+		FillRect((int)J2.x, (int)J2.y, J2.w, J2.h, 0x0000);
+		if(nave2_izq && J2.x > 162){
+			J2.x -= 2.5;
+		}
+		if(nave2_der && J2.x < 303){
+			J2.x += 2.5;
+		}
+		LCD_Sprite((int)J2.x, (int)J2.y, J2.w, J2.h, navesita, 3, frameActual % 3, 1, 0, 0x0000);
 	}
 }
 
@@ -435,15 +553,12 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART6_UART_Init();
   /* USER CODE BEGIN 2 */
-  HAL_UART_Receive_IT(&huart1, &rxByte, 1);
+  HAL_UART_Receive_IT(&huart1, &rxByte1, 1);
   HAL_UART_Receive_IT(&huart6, &rxByte2, 1);
   HAL_UART_Transmit(&huart2, (uint8_t*)"Sistema listo\r\n", 15, 1000);
   LCD_Init();
   LCD_Clear(0x00);
-  InitEnemigos(1);
-  //PantallaInicio();
-  //Ganador_J1();
-  //Ganador_J2();
+
 
 
   /* USER CODE END 2 */
@@ -451,7 +566,7 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_4);
-
+  PantallaInicio();
   while (1)
   {
     /* USER CODE END WHILE */
@@ -459,104 +574,94 @@ int main(void)
     /* USER CODE BEGIN 3 */
 
 	  uint32_t tick = HAL_GetTick();
-	  if(tick - tiempoSpawn >= 800 && AlienActual < MAX_ALIENS)
+
+	  switch(modoActual)
 	  {
-		  Enemigos[AlienActual].vivo = 1;
-		  Enemigos[AlienActual].y = -20;
-		  AlienActual++;
-		  tiempoSpawn = tick;
+	  case ESTADO_MENU:
+		  if(nave1_abj)
+		  {
+		  	  SeleccionMenu = 1;
+		  	  nave1_abj = 0;
+		  }
+		  if(nave1_arr)
+		  {
+		  	  SeleccionMenu = 0;
+		  	  nave1_arr = 0;
+		  }
+		  int cursor = (SeleccionMenu == 0) ? 140 : 165;
+		  if(SeleccionMenu != seleccionPrevia)
+		  {
+			  LCD_Print(" ", 70, 140, 2, 0x0000, 0x0000);
+			  LCD_Print(" ", 70, 165, 2, 0x0000, 0x0000);
+			  LCD_Print(">", 70, cursor, 2, 0x07FF, 0x0000);
+			  seleccionPrevia = SeleccionMenu;
+		  }
+		  if(nave1_sel)
+		  {
+		  	  nave1_sel = 0;
+		  	  transicion();
+		  	  LCD_Clear(0x0000);
+		  	  seleccionPrevia = -1;
+		  	  if(SeleccionMenu == 0)
+		  	  {
+		  		  InitJuego1();
+		  		  modoActual = ESTADO_JUG1;
+		  	  }else{
+		  		  InitJuego2();
+		  		  modoActual = ESTADO_JUG2;
+		  	  }
+		  }
+		  break;
+	  case ESTADO_JUG1:
+		  if(tick - timerAliens >= 40)						//los aliens se actualizan cada 30 ms, lo q da 33FPS
+		  {
+			  MoverAliens();
+			  timerAliens = tick;
+		  }
+		  if(tick - timerNaves >= 20)
+		  {
+			  MoverNaves();
+			  timerNaves = tick;
+		  }
+		  if(tick - timerAnimacionAliens >= 200)
+		  {
+			  frameActual = (frameActual + 1) % 8;
+			  timerAnimacionAliens = tick;
+		  }
+		  if(tick - tiempoSpawn >= 800 && AlienActual < MAX_ALIENS)
+		  {
+			  Enemigos[AlienActual].vivo = 1;
+			  Enemigos[AlienActual].y = -20;
+			  AlienActual++;
+			  tiempoSpawn = tick;
+		  }
+		  break;
+	  case ESTADO_JUG2:
+		  break;
+	  case ESTADO_VICTORIA:
+		  break;
 	  }
 
-	  if(tick - timerAliens >= 30)						//los aliens se actualizan cada 30 ms, lo q da 33FPS
-	  {
-	 	  MoverAliens();
-		  timerAliens = tick;
-	  }
-	  if(tick - timerAnimacionAliens >= 200)
-	  {
-		  frameActual = (frameActual + 1) % 8;
-		  timerAnimacionAliens = tick;
 
-	  }
 
-	  if (accionLista){
-		  accionLista = 0;
 
-		  HAL_UART_Transmit(&huart2, (uint8_t*)"Control 1: ", 11, 1000);
-		  HAL_UART_Transmit(&huart2, accion, strlen((char*)accion), 1000);
-		  HAL_UART_Transmit(&huart2, (uint8_t*)"\r\n", 2, 1000);
 
-		  if (strcmp((char*)accion, "Izquierda") == 0){}
-		  else if (strcmp((char*)accion, "Izquierda_off") == 0){}
-		  else if (strcmp((char*)accion, "Derecha") == 0){}
-		  else if (strcmp((char*)accion, "Derecha_off") == 0){}
-		  else if (strcmp((char*)accion, "Accion A") == 0) {}
-		  else if (strcmp((char*)accion, "Accion A_off") == 0){}
-		  memset(accion, 0, sizeof(accion));
-		  indx = 0;
-	  }
 
-	  if(accion2Lista){
-		  accion2Lista = 0;
 
-		  HAL_UART_Transmit(&huart2, (uint8_t*)"Control 2: ", 11, 1000);
-		  HAL_UART_Transmit(&huart2, accion2, strlen((char*)accion2), 1000);
-		  HAL_UART_Transmit(&huart2, (uint8_t*)"\r\n", 2, 1000);
+	  if (nave1_dis){ /* nave 1 dispara        */ }
+	  if (nave1_sel){ /* nave 1 dispara        */ }
+	  if (nave1_arr){ /* nave 1 dispara        */ }
+	  if (nave1_abj){ /* nave 1 dispara        */ }
 
-		  if (strcmp((char*)accion2, "Izquierda") == 0){}
-		  else if (strcmp((char*)accion2, "Izquierda_off") == 0){}
-		  else if (strcmp((char*)accion2, "Derecha") == 0){}
-		  else if (strcmp((char*)accion2, "Derecha_off") == 0){}
-		  else if (strcmp((char*)accion2, "Accion A") == 0){}
-		  else if (strcmp((char*)accion2, "Accion A_off") == 0){}
-		  memset(accion2, 0, sizeof(accion2));
-		  indx2 = 0;
-	  }
-	  /*
-	  if (accionLista && strcmp((char*)accion, "Accion A") == 0) {
-	      accionLista = 0;
-	      transicion();  // Tu cortina negra
-	      LCD_Clear(0x0000);
-	      // Aquí puedes poner un flag como "bool jugando = true;"
-	  }
-	  */
-	  //JogaBonito2();
-	  /*
-	  for (int x = 0; x < 100 - 69; x++){
-		  int anim = (x/10) % 3;
-		  LCD_Sprite(x, 150, 69, 68, otra, 3, anim, 0, 0);
-		  V_line(x-1, 50, 68,  0x00);
-		  HAL_Delay(15);
-	  }
+	  if (nave2_izq){ /* mover nave 2 izquierda */ }
+	  if (nave2_der){ /* mover nave 2 derecha   */ }
+	  if (nave2_dis){ /* nave 2 dispara         */ }
+	  if (nave2_sel){ /* nave 2 dispara         */ }
+	  if (nave2_arr){ /* nave 2 dispara         */ }
+	  if (nave2_abj){ /* nave 2 dispara         */ }
 
-	  for (int var = 100 - 69; var > 0; var--){
-		  int anim = (var/10) % 3;
-		  LCD_Sprite(var, 150, 69, 68, otra, 3, anim, 1, 0);
-		  V_line(var + 69, 150, 68, 0x00);
-		  HAL_Delay(150);
-	  }
 
-	  for (int y = 0; y < 240 - 144; y++){
-		  int alien1 = (y/10)%9;
-		  LCD_Sprite(50, y, 17, 144, malo1, 9, alien1, 0, 1);
-		  V_line(50, y-1, 144,  0x00);
-		  HAL_Delay(15);
-	  }
-	  for (int x = 0; x < 152-17; x++) {
-	  		int anim = (x/10)%3;
-	  		// anim 0 1 2 3
-	  		LCD_Sprite(x, 180, 17, 15, navesita, 3, anim, 0, 0, 0x0000);
-	  		V_line(x - 1, 180, 15, 0x0000);
-	  		HAL_Delay(15);
 
-	  	}
-	  for (int var = 152 - 17; var > 0;  var--) {
-	  		int anim = (var / 10) % 3;
-	  		LCD_Sprite(var, 180, 17, 15, navesita, 3, anim, 1, 0, 0x0000);
-	  		V_line(var + 17, 180, 15, 0x0000);
-	  		HAL_Delay(15);
-	  	}
-	  	*/
   }
   /* USER CODE END 3 */
 }
@@ -882,26 +987,86 @@ static void MX_GPIO_Init(void)
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
 	 if (huart->Instance == USART1){
-		 if (rxByte == '\n' || indx >= 24){
-			 accion[indx] = '\0';
-			 accionLista = 1;
-		 }
-		 else if (rxByte != '\r'){
-			 accion[indx] = rxByte;
-			 indx++;
-		 }
-		 HAL_UART_Receive_IT(&huart1, &rxByte, 1);
+		 switch (rxByte1) {
+		 case CMD_IZQ:
+			 nave1_izq = 1;
+			 break;
+		 case CMD_IZQ_OFF:
+			 nave1_izq = 0;
+			 break;
+		 case CMD_DER:
+			 nave1_der = 1;
+			 break;
+		 case CMD_DER_OFF:
+			 nave1_der = 0;
+			 break;
+		 case CMD_DIS:
+			 nave1_dis = 1;
+			 break;
+		 case CMD_DIS_OFF:
+			 nave1_dis = 0;
+			 break;
+		 case CMD_SEL:
+			 nave1_sel = 1;
+			 break;
+		 case CMD_SEL_OFF:
+			 nave1_sel = 0;
+			 break;
+		 case CMD_ARR:
+			 nave1_arr = 1;
+			 break;
+		 case CMD_ARR_OFF:
+			 nave1_arr = 0;
+			 break;
+		 case CMD_ABJ:
+			 nave1_abj = 1;
+			 break;
+		 case CMD_ABJ_OFF:
+			 nave1_abj = 0;
+			 break;
+		     }
+		 HAL_UART_Receive_IT(&huart1, &rxByte1, 1);
 	 }
 
 	 if (huart->Instance == USART6){
-		 if (rxByte2 == '\n' || indx2 >= 24){
-			 accion2[indx2] = '\0';
-			 accion2Lista = 1;
-		 }
-		 else if (rxByte2 != '\r'){
-			 accion2[indx2] = rxByte2;
-			 indx2++;
-		 }
+		 switch (rxByte2) {
+		 case CMD_IZQ:
+			 nave2_izq = 1;
+			 break;
+		 case CMD_IZQ_OFF:
+			 nave2_izq = 0;
+			 break;
+		 case CMD_DER:
+			 nave2_der = 1;
+			 break;
+		 case CMD_DER_OFF:
+			 nave2_der = 0;
+			 break;
+		 case CMD_DIS:
+			 nave2_dis = 1;
+			 break;
+		 case CMD_DIS_OFF:
+			 nave2_dis = 0;
+			 break;
+		 case CMD_SEL:
+			 nave2_sel = 1;
+			 break;
+		 case CMD_SEL_OFF:
+			 nave2_sel = 0;
+			 break;
+		 case CMD_ARR:
+			 nave2_arr = 1;
+			 break;
+		 case CMD_ARR_OFF:
+			 nave2_arr = 0;
+			 break;
+		 case CMD_ABJ:
+			 nave2_abj = 1;
+			 break;
+		 case CMD_ABJ_OFF:
+			 nave2_abj = 0;
+			 break;
+		    }
 		 HAL_UART_Receive_IT(&huart6, &rxByte2, 1);
 	 }
 }
