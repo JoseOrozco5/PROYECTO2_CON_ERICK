@@ -11,4 +11,4 @@
 ../Core/Src/ili9341.c:351:6:LCD_Bitmap	40	static
 ../Core/Src/ili9341.c:374:6:LCD_BitmapTransparent	40	static
 ../Core/Src/ili9341.c:397:6:LCD_Sprite	64	static
-../Core/Src/ili9341.c:440:6:LCD_SpriteY	48	static
+../Core/Src/ili9341.c:443:6:LCD_SpriteY	48	static

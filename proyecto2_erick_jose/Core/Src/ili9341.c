@@ -426,6 +426,9 @@ void LCD_Sprite(int x, int y, int width, int height, const uint16_t *bitmap,
 			k = j * ancho + index * width + 1 + offset;
 			for (int i = 0; i < width; i++) {
 				uint16_t pixel = bitmap[k];
+				if(pixel == color_fondo){
+					pixel = 0x0000;
+				}
 				LCD_DATA(pixel >> 8);
 				LCD_DATA(pixel & 0xFF);
 				k++;

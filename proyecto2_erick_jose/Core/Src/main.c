@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "fatfs.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -28,6 +29,9 @@
 #include <string.h>
 #include "math.h"
 #include "pitches.h"
+//----------SD--------//
+#include "fatfs_sd.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -43,6 +47,8 @@ typedef struct{
 	float x, y;
 	int w, h;
 	int vivo;
+	int explosion;
+	int frame_explosion;
 	int frame;
 }Nave;
 
@@ -67,6 +73,8 @@ typedef struct{
 	int tipo;												//tipo de alien (de los 4 sprites)
 	int w, h;												//width y height
 	int frame;												//animacion
+	int explosion;
+	int frame_explosion;
 	float t;												//tiempo/anngulo para seno
 	float amplitud;											//q tan rapido se mueve el alien
 	float frecuencia; 										//q tan rapido oscila
@@ -92,6 +100,29 @@ typedef struct{
 #define CMD_ARR_OFF  0x0A
 #define CMD_ABJ      0x0B
 #define CMD_ABJ_OFF  0x0C
+
+//audio
+#define SND_MENU       0x01
+#define SND_JUEGO      0x02
+#define SND_DISPARO    0x03
+#define SND_EXPLOSION  0x04
+#define SND_NAVE_CAE   0x05
+#define SND_VICTORIA   0x06
+#define SND_PUNTAJE 0x07
+#define SND_ALIEN_ROJO 0x08
+#define SND_ALIEN_AZUL 0x09
+#define SND_VERDE_F1 0x0a
+#define SND_VERDE_F2 0x0b
+
+//-------DEF SD----------------//
+//SPI_HandleTypeDef hspi2;
+FATFS fs;
+FATFS *pfs;
+FIL fil;
+FRESULT fres;
+DWORD fre_clust;
+uint32_t totalSpace, freeSpace;
+char buffer[100];
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -101,11 +132,13 @@ typedef struct{
 
 /* Private variables ---------------------------------------------------------*/
 SPI_HandleTypeDef hspi1;
+SPI_HandleTypeDef hspi2;
 
 TIM_HandleTypeDef htim1;
 
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
+UART_HandleTypeDef huart3;
 UART_HandleTypeDef huart6;
 
 /* USER CODE BEGIN PV */
@@ -119,6 +152,8 @@ int SeleccionMenu = 0;
 Nave J1, J2;
 uint32_t timerNaves = 0;
 static int seleccionPrevia = -1;
+static uint8_t musicaMenu = 0;
+static uint8_t musicaJuego = 0;
 
 //---------Controles---------//
 uint8_t rxByte1;
@@ -144,6 +179,7 @@ volatile uint8_t nave2_abj = 0;
 //-------Puntaje----------------//
 char Score[20];
 
+
 //-------Despliege de aliens----//
 #define MAX_ALIENS 8
 Alien Enemigos[MAX_ALIENS];
@@ -153,13 +189,18 @@ uint32_t timerAnimacionAliens = 0;
 int AlienActual = 0;
 uint32_t tiempoSpawn = 0;
 static float vaiven = 0;
+int aliensVivos = 0;
 
 //---Disparo de naves/aliens---//
 #define MAX_BALAS 5
 Bala disparo_J1[MAX_BALAS];
 Bala disparo_J2[MAX_BALAS];
 uint32_t timerBalas = 0;
-
+Bala balas_aliens[MAX_BALAS];
+uint32_t timerBalasAliens = 0;
+int scoreJ1 = 0, scoreJ2 = 0;
+int CausaVictoria = 0;
+uint32_t timerExplo = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -170,10 +211,9 @@ static void MX_TIM1_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_USART6_UART_Init(void);
+static void MX_SPI2_Init(void);
+static void MX_USART3_UART_Init(void);
 /* USER CODE BEGIN PFP */
-void playTone(int *tone, int *duration, int *pause, int size);
-int presForFrequency(int frequency);
-void noTone(void);
 void PantallaInicio(void);
 void Dibujar(void);
 void InitEnemigos(int stage);
@@ -181,9 +221,9 @@ void MoverAliens(void);
 void MoverNaves(void);
 void InitJuego1(void);
 void Disparar(int jugador);
+int ChequearColision(float x1, float y1, int w1, int h1, float x2, float y2, int w2, int h2);
 void ActualizarBalas(void);
 void InitJuego2(void);
-void JogaBonito2(void);
 void Ganador_J1(void);
 void Ganador_J2(void);
 void Marco(void);
@@ -192,52 +232,12 @@ void transicion(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-int presForFrequency(int frequency)
-{
-	if (frequency == 0)
-	{
-		return 0;
-	}
-	return ((TIM_FREQ / (TIM_ARR_VAL * frequency)) - 1);
-}
-
-void playTone(int *tone, int *duration, int *pause, int size)
-{
-	for (int i = 0; i < size; i++)
-	{
-		int prescaler = presForFrequency(tone[i]);				//calcular prescaler nuevo
-		int dur = duration[i];									//obtener la duracion
-		int pauseBetweenTones = 0;
-		if (pause != NULL)
-			pauseBetweenTones = pause[i] - duration[i];
-		__HAL_TIM_SET_PRESCALER(&htim1, prescaler);
-		HAL_Delay(dur);
-		noTone();
-		HAL_Delay(pauseBetweenTones);
-	}
-}
-
-void playTonePRE(int *tone, int *duration, int *pause, int size)
-{
-	for (int i = 0; i < size; i++)
-	{
-		int prescaler = (tone[i]);				//calcular prescaler nuevo
-		int dur = duration[i];									//obtener la duracion
-		int pauseBetweenTones = 0;
-		if (pause != NULL)
-			pauseBetweenTones = pause[i] - duration[i];
-		__HAL_TIM_SET_PRESCALER(&htim1, prescaler);
-		HAL_Delay(dur);
-		noTone();
-		HAL_Delay(pauseBetweenTones);
-	}
-}
 
 
-void noTone(void)
-{
-	__HAL_TIM_SET_PRESCALER(&htim1, 0);
+void Musica_Comando(uint8_t cmd) {
+    HAL_UART_Transmit(&huart3, &cmd, 1, 100);
 }
+
 
 void PantallaInicio(void)
 {
@@ -266,6 +266,8 @@ void InitJuego1(void)
 	J1.w = 17;
 	J1.h = 15;
 	J1.vivo = 1;
+	J1.explosion = 0;
+	J1.frame_explosion = 0;
 	InitEnemigos(1);
 }
 
@@ -277,12 +279,16 @@ void InitJuego2(void)
 	J1.w = 17;
 	J1.h = 15;
 	J1.vivo = 1;
+	J1.explosion = 0;
+	J1.frame_explosion = 0;
 
 	J2.x = 230;
 	J2.y = 210;
 	J2.w = 17;
 	J2.h = 15;
 	J2.vivo = 1;
+	J2.explosion = 0;
+	J2.frame_explosion = 0;
 	/*
 	for (int y = 0; y < 240; y += 15){
 		LCD_Bitmap(160, y, 15, 15, tile);
@@ -315,6 +321,8 @@ void InitEnemigos(int stage)
 		Enemigos[i].frecuencia = 0.05;
 		Enemigos[i].estado = ENTRANDO;
 		Enemigos[i].tipo = i / aliensPorTipo;
+		Enemigos[i].explosion = 0;
+		Enemigos[i].frame_explosion = 0;
 
 		if(Enemigos[i].tipo >= stages)
 		{
@@ -345,95 +353,118 @@ void InitEnemigos(int stage)
 
 void MoverAliens(void)
 {
-	vaiven += 0.02;
-	float offsetFormacion = sin(vaiven) * 15;
+	vaiven += 0.035;
+	float offsetFormacion = sin(vaiven) * 30.0;
 
 
 	for(int i = 0; i < MAX_ALIENS; i++){
-		if(Enemigos[i].vivo)
+		if(Enemigos[i].vivo || Enemigos[i].explosion)
 		{
-			FillRect((int)Enemigos[i].x, (int)Enemigos[i].y, (int)Enemigos[i].w, (int)Enemigos[i].h, 0x0000);
-			int FrameADibujar = frameActual;
-
-			switch(Enemigos[i].estado)
-			{
-			case ENTRANDO:
-				Enemigos[i].y += 1.6;
-				//float inicio_alien = (Enemigos[i].tipo == 0) ? 140 : 180;
-				float inicio_alien = 140 + (Enemigos[i].tipo * 20);
-				float lado = (Enemigos[i].tipo == 0) ? 1.0 : -1.0;
-				float progreso = (Enemigos[i].y + 20.0) / (Enemigos[i].y_base + 20);
-				if (progreso > 1.0){
-					progreso = 1.0;
-				}
-				float centro_x = inicio_alien + (Enemigos[i].x_base - inicio_alien) * progreso;
-				float zigzag = lado * sin(Enemigos[i].y * 0.04) * Enemigos[i].amplitud;
-				Enemigos[i].x = centro_x + zigzag;
-
-				if(Enemigos[i].y >= Enemigos[i].y_base)
+			if(Enemigos[i].explosion){
+				FillRect((int)Enemigos[i].x, (int)Enemigos[i].y, 30, 30, 0x0000);
+				LCD_Sprite((int)Enemigos[i].x, (int)Enemigos[i].y, 21, 19, explosion_alien, 4, Enemigos[i].frame_explosion, 0, 0, 0x0000);
+			}else{
+				int FrameADibujar = frameActual;
+				switch(Enemigos[i].estado)
 				{
+				case ENTRANDO:
+					Enemigos[i].y += 1.6;
+					//float inicio_alien = (Enemigos[i].tipo == 0) ? 140 : 180;
+					float inicio_alien = 140 + (Enemigos[i].tipo * 20);
+					float lado = (Enemigos[i].tipo == 0) ? 1.0 : -1.0;
+					float progreso = (Enemigos[i].y + 20.0) / (Enemigos[i].y_base + 20);
+					if (progreso > 1.0){
+						progreso = 1.0;
+					}
+					float centro_x = inicio_alien + (Enemigos[i].x_base - inicio_alien) * progreso;
+					float zigzag = lado * sin(Enemigos[i].y * 0.04) * Enemigos[i].amplitud;
+					Enemigos[i].x = centro_x + zigzag;
+
+					if(Enemigos[i].y >= Enemigos[i].y_base)
+					{
+						Enemigos[i].y = Enemigos[i].y_base;
+						Enemigos[i].estado = FORMACION;
+					}
+					break;
+				case FORMACION:
+					Enemigos[i].x = Enemigos[i].x_base + offsetFormacion;
 					Enemigos[i].y = Enemigos[i].y_base;
-					Enemigos[i].estado = FORMACION;
+					FrameADibujar = frameActual % 2;
+					break;
 				}
-				break;
-			case FORMACION:
-				Enemigos[i].x = Enemigos[i].x_base + offsetFormacion;
-				Enemigos[i].y = Enemigos[i].y_base;
-				FrameADibujar = frameActual % 2;
-				break;
+				const uint16_t *spriteActual;
+				if(Enemigos[i].tipo	== 0)
+				{
+					spriteActual = alien_verde;
+				}
+				else if(Enemigos[i].tipo == 1)
+				{
+					spriteActual = alien_rojo;
+				}
+				else if(Enemigos[i].tipo == 2)
+				{
+					spriteActual = mosca;
+				}
+				else
+				{
+					spriteActual = alien_azul;
+				}
+				LCD_Sprite((int)Enemigos[i].x, (int)Enemigos[i].y, (int)Enemigos[i].w, (int)Enemigos[i].h, spriteActual, 8, FrameADibujar, 0, 0, 0x0000);
 			}
-
-
-			const uint16_t *spriteActual;
-			if(Enemigos[i].tipo	== 0)
-			{
-				spriteActual = alien_verde;
-			}
-			else if(Enemigos[i].tipo == 1)
-			{
-				spriteActual = alien_rojo;
-			}
-			else if(Enemigos[i].tipo == 2)
-			{
-				spriteActual = mosca;
-			}
-			else
-			{
-				spriteActual = alien_azul;
-			}
-			LCD_Sprite((int)Enemigos[i].x, (int)Enemigos[i].y, (int)Enemigos[i].w, (int)Enemigos[i].h, spriteActual, 8, FrameADibujar, 0, 0, 0x0000);
 		}
 	}
 }
 
 void MoverNaves(void)
 {
-	if(J1.vivo)
+	if(J1.vivo || J1.explosion)
 	{
-		FillRect((int)J1.x, (int)J1.y, J1.w, J1.h, 0x0000);
-		 if (nave1_izq && J1.x > 0){
-			 J1.x -= 2.5;
-		 }
-		 if (nave1_der){
-			 float limite = (modoActual == ESTADO_JUG2) ? 143 : 303;
-			 if(J1.x < limite)
-			 {
-				 J1.x += 2.5;
-			 }
-		 }
-		 LCD_Sprite((int)J1.x, (int)J1.y, J1.w, J1.h, navesita, 3, frameActual % 3, 0, 0, 0x0000);
+		if(J1.explosion){
+			FillRect((int)J1.x - 5, (int)J1.y - 5, 34, 34, 0x0000);
+			LCD_Sprite((int)J1.x, (int)J1.y, 30, 32, explosion_nave, 4, J1.frame_explosion, 0, 0, 0x0000);
+		}else{
+			float x_prev = J1.x;
+			if(nave1_izq && J1.x > 0){
+				J1.x -= 2.5;
+			}
+			if(nave1_der){
+				float limite = (modoActual == ESTADO_JUG2) ? 143 : 303;
+				if(J1.x < limite)
+				{
+					J1.x += 2.5;
+				}
+			}
+			int dx = (int)J1.x - (int)x_prev;
+			if(dx > 0){
+				FillRect((int)x_prev, (int)J1.y, dx, J1.h, 0x0000);
+			}else if(dx < 0){
+				FillRect((int)J1.x + J1.w, (int)J1.y, -dx, J1.h, 0x0000);
+				LCD_Sprite((int)J1.x, (int)J1.y, J1.w, J1.h, navesita, 3, frameActual % 3, 0, 0, 0x0000);
+			}
+		}
 	}
 
-	if(modoActual == ESTADO_JUG2 && J2.vivo)
+	if(modoActual == ESTADO_JUG2 && (J2.vivo || J2.explosion))
 	{
-		FillRect((int)J2.x, (int)J2.y, J2.w, J2.h, 0x0000);
-		if(nave2_izq && J2.x > 162){
-			J2.x -= 2.5;
+		if(J2.explosion){
+			FillRect((int)J2.x - 5, (int)J2.y - 5, 34, 34, 0x0000);
+			LCD_Sprite((int)J2.x, (int)J2.y, 30, 32, explosion_nave, 4, J2.frame_explosion, 0, 1, 0x0000);
+		}else{
+			float x_prev = J2.x;
+			if(nave2_izq && J2.x > 162){
+				J2.x -= 2.5;
+			}
+			if(nave2_der && J2.x < 303){
+				J2.x += 2.5;
+			}
+			int dx = (int)J2.x - (int)x_prev;
+			if(dx > 0){
+				FillRect((int)x_prev, (int)J2.y, dx, J2.h, 0x0000);
+			}else if(dx < 0){
+				FillRect((int)J2.x + J2.w, (int)J2.y, -dx, J1.h, 0x0000);
+				LCD_Sprite((int)J2.x, (int)J2.y, J2.w, J2.h, navesita, 3, frameActual % 3, 1, 0, 0x0000);
+			}
 		}
-		if(nave2_der && J2.x < 303){
-			J2.x += 2.5;
-		}
-		LCD_Sprite((int)J2.x, (int)J2.y, J2.w, J2.h, navesita, 3, frameActual % 3, 1, 0, 0x0000);
 	}
 }
 
@@ -493,6 +524,11 @@ void ActualizarBalas(void)
 			}
 		}
 	}
+}
+
+int ChequearColision(float x1, float y1, int w1, int h1, float x2, float y2, int w2, int h2)
+{
+	return (x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2);
 }
 
 void Ganador_J1(void)
@@ -588,6 +624,9 @@ int main(void)
   MX_USART2_UART_Init();
   MX_USART1_UART_Init();
   MX_USART6_UART_Init();
+  MX_SPI2_Init();
+  MX_FATFS_Init();
+  MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
   HAL_UART_Receive_IT(&huart1, &rxByte1, 1);
   HAL_UART_Receive_IT(&huart6, &rxByte2, 1);
@@ -595,7 +634,38 @@ int main(void)
   LCD_Init();
   LCD_Clear(0x00);
 
+  HAL_Delay(1000); // Dale un segundo completo de vida a la SD
 
+  HAL_UART_Transmit(&huart2, (uint8_t*)"SD: Intentando conectar...\r\n", 28, 1000);
+
+    // Hacemos un bucle de 5 intentos para montar
+  int intentos = 0;
+  do {
+	  fres = f_mount(&fs, "", 1);
+	  if (fres != FR_OK) {
+		  HAL_UART_Transmit(&huart2, (uint8_t*)".", 1, 1000);
+		  HAL_Delay(100);
+		  intentos++;
+        }
+    } while (fres != FR_OK && intentos < 5);
+
+  if (fres == FR_OK) {
+
+	  HAL_UART_Transmit(&huart2, (uint8_t*)"\r\nSD: ¡Montada nítido!\r\n", 25, 1000);
+
+        // Abrimos para escribir el Score inicial
+	  fres = f_open(&fil, "SCORE.TXT", FA_WRITE | FA_OPEN_ALWAYS);
+	  if (fres == FR_OK) {
+            // Nos vamos al final del archivo para no borrar lo anterior
+		  f_lseek(&fil, f_size(&fil));
+		  f_puts("Partida iniciada...\n", &fil);
+		  f_close(&fil);
+		  HAL_UART_Transmit(&huart2, (uint8_t*)"SD: Log de inicio guardado.\r\n", 30, 1000);
+        }
+    } else {
+    	sprintf(buffer, "\r\nSD: Fallo definitivo (Error: %d)\r\n", fres);
+        HAL_UART_Transmit(&huart2, (uint8_t*)buffer, strlen(buffer), 1000);
+    }
 
   /* USER CODE END 2 */
 
@@ -614,6 +684,11 @@ int main(void)
 	  switch(modoActual)
 	  {
 	  case ESTADO_MENU:
+		  if(!musicaMenu){
+			  Musica_Comando(0x01);
+			  musicaMenu = 1;
+			  musicaJuego = 0;
+		  }
 		  if(nave1_abj)
 		  {
 		  	  SeleccionMenu = 1;
@@ -635,6 +710,8 @@ int main(void)
 		  if(nave1_sel)
 		  {
 		  	  nave1_sel = 0;
+		  	  musicaMenu = 0;
+		  	  Musica_Comando(0x02);
 		  	  transicion();
 		  	  LCD_Clear(0x0000);
 		  	  seleccionPrevia = -1;
@@ -651,65 +728,100 @@ int main(void)
 		  break;
 
 	  case ESTADO_JUG1:
-		  if(tick - timerAliens >= 40)						//los aliens se actualizan cada 30 ms, lo q da 33FPS
-		  {
-			  MoverAliens();
-			  timerAliens = tick;
-		  }
-		  if(tick - timerNaves >= 20)
-		  {
-			  MoverNaves();
-			  if(nave1_dis){
-				  Disparar(1);
-				  nave1_dis = 0;
-			  }
-			  timerNaves = tick;
-		  }
-		  if(tick - timerBalas >= 15)
-		  {
-		 	  ActualizarBalas();
-		 	  timerBalas = tick;
-		  }
-		  if(tick - timerAnimacionAliens >= 200)
-		  {
-			  frameActual = (frameActual + 1) % 8;
-			  timerAnimacionAliens = tick;
-		  }
-		  if(tick - tiempoSpawn >= 800 && AlienActual < MAX_ALIENS)
-		  {
-			  Enemigos[AlienActual].vivo = 1;
-			  Enemigos[AlienActual].y = -20;
-			  AlienActual++;
-			  tiempoSpawn = tick;
-		  }
-		  break;
+
 	  case ESTADO_JUG2:
-		  if(tick - timerAliens >= 40){
+		  //Movimiento de aliens
+		  if(tick - timerAliens >= 50){
 			  MoverAliens();
 			  timerAliens = tick;
 		  }
+		  //Movimiento de naves
 		  if(tick - timerNaves >= 20){
 			  MoverNaves();
-			  if(nave1_dis){
+			  if(nave1_dis && J1.vivo && !J1.explosion){
 				  Disparar(1);
+				  Musica_Comando(0x03);
 				  nave1_dis = 0;
 			  }
-			  if(modoActual == ESTADO_JUG2 && nave2_dis){
+			  if(modoActual == ESTADO_JUG2 && nave2_dis && J2.vivo && !J2.explosion){
 				  Disparar(2);
+				  Musica_Comando(0x03);
 				  nave2_dis = 0;
 			  }
 			  timerNaves = tick;
 		  }
+		  //Disparo de balas
 		  if(tick - timerBalas >= 15)
-		  {
-			  ActualizarBalas();
-			  timerBalas = tick;
-		  }
+		          {
+		              ActualizarBalas();
+
+		              // Flags para saber si hay que redibujar (Deben estar en PV o inicializadas aquí)
+		              uint8_t hayHitJ1 = 0;
+		              uint8_t hayHitJ2 = 0;
+
+		              for(int j = 1; j <= (modoActual == ESTADO_JUG2 ? 2 : 1); j++)
+		              {
+		                  Bala* listaBalas = (j == 1) ? disparo_J1 : disparo_J2;
+		                  int* scoreActual = (j == 1) ? &scoreJ1 : &scoreJ2;
+
+		                  for(int b = 0; b < MAX_BALAS; b++)
+		                  {
+		                      if(listaBalas[b].activo)
+		                      {
+		                          for(int a = 0; a < MAX_ALIENS; a++)
+		                          {
+		                              if(Enemigos[a].vivo && !Enemigos[a].explosion)
+		                              {
+		                                  if(ChequearColision(listaBalas[b].x, listaBalas[b].y, 5, 10, Enemigos[a].x, Enemigos[a].y, Enemigos[a].w, Enemigos[a].h))
+		                                  {
+		                                      listaBalas[b].activo = 0;
+		                                      Enemigos[a].explosion = 1;
+		                                      Enemigos[a].frame_explosion = 0;
+		                                      *scoreActual += 100;
+
+		                                      if(j == 1) hayHitJ1 = 1;
+		                                      else hayHitJ2 = 1;
+
+		                                      if(Enemigos[a].tipo == 0){
+		                                    	  Musica_Comando(0x08);			//rojo
+		                                      }
+		                                      else if(Enemigos[a].tipo == 1){
+		                                    	Musica_Comando(0x0a);  			//verde
+		                                      }
+		                                      else if(Enemigos[a].tipo == 2){
+		                                    	  Musica_Comando(0x09);			//mosca
+		                                      }
+		                                      else{
+		                                    	  Musica_Comando(0x0b);			//azul
+		                                      }
+		                                  }
+		                              }
+		                          }
+		                      }
+		                  }
+		              }
+
+		              // --- ACTUALIZACIÓN DE PANTALLA (Fuera de los ciclos para evitar lag) ---
+		              if(hayHitJ1)
+		              {
+		                  sprintf(Score, "%d", scoreJ1);
+		                  LCD_Print(Score, 8, 12, 1, 0xFFFF, 0x0000);
+		              }
+		              if(hayHitJ2)
+		              {
+		                  sprintf(Score, "%d", scoreJ2);
+		                  LCD_Print(Score, 290, 12, 1, 0xFFFF, 0x0000);
+		              }
+
+		              timerBalas = tick;
+		          }
+		  //Movimiento en formacion de aliens
 		  if(tick - timerAnimacionAliens >= 200)
 		  {
 			  frameActual = (frameActual + 1) % 8;
 			  timerAnimacionAliens = tick;
 		  }
+		  //spawn de aliens desde arriba
 		  if(tick - tiempoSpawn >= 800 && AlienActual < MAX_ALIENS)
 		  {
 			  Enemigos[AlienActual].vivo = 1;
@@ -717,8 +829,125 @@ int main(void)
 			  AlienActual++;
 			  tiempoSpawn = tick;
 		  }
+		  //Colisiones
+		  if(tick - timerExplo >= 60) {
+			  for(int i=0; i<MAX_ALIENS; i++) {
+				  if(Enemigos[i].explosion) {
+					  Enemigos[i].frame_explosion++;
+					  if(Enemigos[i].frame_explosion >= 4) {
+						  FillRect((int)Enemigos[i].x, (int)Enemigos[i].y, 30, 30, 0x0000);
+						  Enemigos[i].explosion = 0;
+						  Enemigos[i].vivo = 0; }
+				  }
+			  }
+			  //explosion nave 1
+			  if(J1.explosion)
+			  {
+				  J1.frame_explosion++;
+				  if(J1.frame_explosion >= 4)
+				  {
+					  FillRect((int)J1.x - 5, (int)J1.y - 5, 32, 32, 0x0000);
+					  J1.explosion = 0;
+					  J1.vivo = 0;
+					  Musica_Comando(0x07);
+					  // --- GUARDAR SCORE FINAL EN SD ---//
+					  fres = f_open(&fil, "SCORE.TXT", FA_WRITE | FA_OPEN_ALWAYS);
+					  if(fres == FR_OK)
+					  {
+						  f_lseek(&fil, f_size(&fil));
+						  sprintf(buffer, "Final Score J1: %d\n", scoreJ1);
+						  f_puts(buffer, &fil);
+						  f_close(&fil);
+					  }
+					  if(modoActual == ESTADO_JUG1){
+						  CausaVictoria = 1;
+						  modoActual = ESTADO_VICTORIA;
+						  Musica_Comando(0x05);
+					  }
+				  }
+			  }
+			  if(modoActual == ESTADO_JUG2  && J2.explosion){
+				  FillRect((int)J2.x - 5, (int)J2.y - 5, 32, 32, 0x0000);
+				  J2.explosion = 0;
+				  J2.vivo = 0;
+				  CausaVictoria = 2;
+				  modoActual = ESTADO_VICTORIA;
+				  Musica_Comando(0x05);
+			  }
+			  timerExplo = tick;
+		  }
+
+		  //Contar aliens vivos
+		  aliensVivos = 0;
+		  for(int i = 0; i < MAX_ALIENS; i++)
+		  {
+			  if(Enemigos[i].vivo || Enemigos[i].explosion){
+				  aliensVivos++;
+			  }
+		  }
+
+		  //Conteo de aliens vivos
+		  if(AlienActual >= MAX_ALIENS && aliensVivos == 0 && modoActual != ESTADO_VICTORIA ){
+			  CausaVictoria = 0;
+			  modoActual = ESTADO_VICTORIA;
+			  Musica_Comando(0x07);
+		  }
+
+		  //Colision de aliens contra naves
+		  for(int i=0; i<MAX_ALIENS; i++) {
+			  if(Enemigos[i].vivo && !Enemigos[i].explosion)
+			  {
+				  if(J1.vivo && !J1.explosion && ChequearColision(Enemigos[i].x, Enemigos[i].y, Enemigos[i].w, Enemigos[i].h, J1.x, J1.y, J1.w, J1.h)){
+					  J1.explosion = 1;
+					  J1.frame_explosion = 0;
+					  Musica_Comando(0x04);
+				  }
+				  if(modoActual == ESTADO_JUG2 && J2.vivo && !J2.explosion && ChequearColision(Enemigos[i].x, Enemigos[i].y, Enemigos[i].w, Enemigos[i].h, J2.x, J2.y, J2.w, J2.h)){
+					  J2.explosion = 1;
+					  J2.frame_explosion = 0;
+					  Musica_Comando(0x04);
+				  }
+			  }
+		  }
 		  break;
 	  case ESTADO_VICTORIA:
+		  static uint8_t pantallaGanador = 0;
+
+		  if(!pantallaGanador){
+			  if(modoActual == ESTADO_VICTORIA){
+				  if(CausaVictoria == 0 || CausaVictoria == 1){
+					  Ganador_J1();
+				  }else if(CausaVictoria == 2){
+					  Ganador_J1();
+				  }else{
+					  if(scoreJ1 >= scoreJ2){
+						  Ganador_J1();
+					  }else{
+						  Ganador_J2();
+					  }
+				  }
+				  pantallaGanador = 1;
+			  }
+		  }
+
+		  if(nave1_sel){
+			  nave1_sel = 0;
+			  pantallaGanador = 0;
+			  CausaVictoria = 0;
+			  modoActual = ESTADO_MENU;
+			  musicaMenu = 0;
+			  LCD_Clear(0x0000);
+			  PantallaInicio();
+			  scoreJ1 = 0;
+			  scoreJ2 = 0;
+			  AlienActual = 0;
+			  aliensVivos = 0;
+			  for(int i=0; i<MAX_ALIENS; i++){
+				  Enemigos[i].vivo = 0;
+				  Enemigos[i].explosion = 0;
+			  }
+		  }
+
 		  break;
 	  }
 
@@ -810,6 +1039,44 @@ static void MX_SPI1_Init(void)
   /* USER CODE BEGIN SPI1_Init 2 */
 
   /* USER CODE END SPI1_Init 2 */
+
+}
+
+/**
+  * @brief SPI2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI2_Init(void)
+{
+
+  /* USER CODE BEGIN SPI2_Init 0 */
+
+  /* USER CODE END SPI2_Init 0 */
+
+  /* USER CODE BEGIN SPI2_Init 1 */
+
+  /* USER CODE END SPI2_Init 1 */
+  /* SPI2 parameter configuration*/
+  hspi2.Instance = SPI2;
+  hspi2.Init.Mode = SPI_MODE_MASTER;
+  hspi2.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi2.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi2.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi2.Init.NSS = SPI_NSS_SOFT;
+  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_256;
+  hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi2.Init.CRCPolynomial = 10;
+  if (HAL_SPI_Init(&hspi2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI2_Init 2 */
+
+  /* USER CODE END SPI2_Init 2 */
 
 }
 
@@ -954,6 +1221,39 @@ static void MX_USART2_UART_Init(void)
 }
 
 /**
+  * @brief USART3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART3_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART3_Init 0 */
+
+  /* USER CODE END USART3_Init 0 */
+
+  /* USER CODE BEGIN USART3_Init 1 */
+
+  /* USER CODE END USART3_Init 1 */
+  huart3.Instance = USART3;
+  huart3.Init.BaudRate = 115200;
+  huart3.Init.WordLength = UART_WORDLENGTH_8B;
+  huart3.Init.StopBits = UART_STOPBITS_1;
+  huart3.Init.Parity = UART_PARITY_NONE;
+  huart3.Init.Mode = UART_MODE_TX;
+  huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart3.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART3_Init 2 */
+
+  /* USER CODE END USART3_Init 2 */
+
+}
+
+/**
   * @brief USART6 Initialization Function
   * @param None
   * @retval None
@@ -1011,7 +1311,10 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(LCD_DC_GPIO_Port, LCD_DC_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, LCD_CS_Pin|SD_CS_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(SD_CS_GPIO_Port, SD_CS_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
