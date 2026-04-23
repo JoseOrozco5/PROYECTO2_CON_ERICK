@@ -155,19 +155,24 @@ static int seleccionPrevia = -1;
 static uint8_t musicaMenu = 0;
 static uint8_t musicaJuego = 0;
 
+//--------Stages-------------//
+int StageActual = 1;
+int MaxStages = 6;
+uint8_t mostrandoStage = 0;
+uint32_t timerStage = 0;
+int StageAliens = 4;
+int MaxAliens = 4;
+#define DURACION_STAGE_MS 2500
+
 //---------Controles---------//
 uint8_t rxByte1;
-
-
 uint8_t rxByte2;
-
 volatile uint8_t nave1_izq = 0;
 volatile uint8_t nave1_der = 0;
 volatile uint8_t nave1_dis = 0;
 volatile uint8_t nave1_sel = 0;
 volatile uint8_t nave1_arr = 0;
 volatile uint8_t nave1_abj = 0;
-
 volatile uint8_t nave2_izq = 0;
 volatile uint8_t nave2_der = 0;
 volatile uint8_t nave2_dis = 0;
@@ -175,13 +180,12 @@ volatile uint8_t nave2_sel = 0;
 volatile uint8_t nave2_arr = 0;
 volatile uint8_t nave2_abj = 0;
 
-
 //-------Puntaje----------------//
-char Score[20];
+char Score[30];
 
 
 //-------Despliege de aliens----//
-#define MAX_ALIENS 8
+#define MAX_ALIENS 12
 Alien Enemigos[MAX_ALIENS];
 int frameActual = 0;
 uint32_t timerAliens = 0;
@@ -216,6 +220,12 @@ static void MX_USART3_UART_Init(void);
 /* USER CODE BEGIN PFP */
 void PantallaInicio(void);
 void Dibujar(void);
+void MostrarStage(int stage);
+void Limpiar(void);
+void InitStage1(void);
+void InitStage2(void);
+void InitStage3(void);
+void Iniciar(int stage);
 void InitEnemigos(int stage);
 void MoverAliens(void);
 void MoverNaves(void);
@@ -224,6 +234,7 @@ void Disparar(int jugador);
 int ChequearColision(float x1, float y1, int w1, int h1, float x2, float y2, int w2, int h2);
 void ActualizarBalas(void);
 void InitJuego2(void);
+void GuardarScoreSD(char* evento);
 void Ganador_J1(void);
 void Ganador_J2(void);
 void Marco(void);
@@ -232,8 +243,6 @@ void transicion(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
-
 void Musica_Comando(uint8_t cmd) {
     HAL_UART_Transmit(&huart3, &cmd, 1, 100);
 }
@@ -259,6 +268,161 @@ void PantallaInicio(void)
 
 }
 
+void MostrarStage(int stage)
+{
+	FillRect(55, 90, 210, 55, 0x0000);
+	FillRect(55, 90, 210, 3, 0xF800);
+	FillRect(55, 142, 210, 3, 0xF800);
+	FillRect(55, 90, 3, 55, 0xF800);
+	FillRect(262, 90, 3, 55, 0xF800);
+	char mensaje[20];
+	sprintf(mensaje, "STAGE %d", stage);
+	LCD_Print(mensaje, 100, 113, 2, 0xFD20, 0x0000);
+	Musica_Comando(0x02);
+}
+
+void Limpiar(void)
+{
+	FillRect(55, 90, 210, 55, 0x0000);
+}
+
+void InitStage1(void)
+{
+	float posiciones[4] = {60, 130, 190, 260};
+	int tipos[4] = {0, 0, 1, 1};
+
+	for(int i = 0; i < 4; i++)
+	{
+		Enemigos[i].x_base = posiciones[i];
+		Enemigos[i].y_base = 55;
+		Enemigos[i].x = Enemigos[i].x_base;
+		Enemigos[i].y = -20;
+		Enemigos[i].vivo = 0;
+		Enemigos[i].explosion = 0;
+		Enemigos[i].frame_explosion = 0;
+		Enemigos[i].estado = ENTRANDO;
+		Enemigos[i].tipo = tipos[i];
+		Enemigos[i].amplitud = 35.0;
+		Enemigos[i].t = 0;
+
+		switch(Enemigos[i].tipo)
+		{
+		case 0:
+			Enemigos[i].w = 19;			//verde
+			Enemigos[i].h = 17;
+			break;
+		case 1:
+			Enemigos[i].w = 17;			//rojo
+			Enemigos[i].h = 16;
+			break;
+		}
+	}
+	for(int i = 4; i < MAX_ALIENS; i++)
+	{
+		Enemigos[i].vivo = 0;
+		Enemigos[i].explosion = 0;
+	}
+}
+
+void InitStage2(void)
+{
+	float posiciones[4] = {60, 130, 190, 260};
+
+	for(int i = 4; i < 8; i++)
+	{
+		Enemigos[i].x_base = posiciones[i - 4];
+		Enemigos[i].y_base = 90;
+		Enemigos[i].x = -20;
+		Enemigos[i].y = 90;
+		Enemigos[i].vivo = 0;
+		Enemigos[i].explosion = 0;
+		Enemigos[i].frame_explosion = 0;
+		Enemigos[i].estado = ENTRANDO;
+		Enemigos[i].tipo = 2;
+		Enemigos[i].amplitud = 30.0;
+		Enemigos[i].t = 0;
+		Enemigos[i].w = 17;
+		Enemigos[i].h = 14;
+
+	}
+	for(int i = 8; i < MAX_ALIENS; i++){
+		Enemigos[i].vivo = 0;
+		Enemigos[i].explosion = 0;
+	}
+}
+
+void InitStage3(void)
+{
+	float posiciones[4] = {60, 130, 190, 260};
+
+	for(int i = 8; i < 12; i++)
+	{
+		Enemigos[i].x_base = posiciones[i - 8];
+		Enemigos[i].y_base = 125;
+		Enemigos[i].x = 320;
+		Enemigos[i].y = 125;
+		Enemigos[i].vivo = 0;
+		Enemigos[i].explosion = 0;
+		Enemigos[i].frame_explosion = 0;
+		Enemigos[i].estado = ENTRANDO;
+		Enemigos[i].tipo = 3;
+		Enemigos[i].amplitud = 25.0;
+		Enemigos[i].t = 0;
+		Enemigos[i].w = 19;
+		Enemigos[i].h = 17;
+
+	}
+}
+
+void Iniciar(int stage)
+{
+	vaiven = 0;
+
+	for(int i = 0; i < MAX_BALAS; i++)
+	{
+		disparo_J1[i].activo = 0;
+		disparo_J2[i].activo = 0;
+		balas_aliens[i].activo = 0;
+	}
+
+	for(int i = 0; i < MAX_ALIENS; i++){
+		Enemigos[i].vivo = 0;
+		Enemigos[i].explosion = 0;
+	}
+
+	if(stage == 1)
+	{
+
+		AlienActual = 0;
+		MaxAliens = 4;
+		InitStage1();
+	}else if(stage == 2){
+		InitStage1();
+		InitStage2();
+		AlienActual = 0;
+		MaxAliens = 8;
+	}else if(stage == 3){
+		InitStage1();
+		InitStage2();
+		InitStage3();
+		AlienActual = 0;
+		MaxAliens = 12;
+	}else{
+		InitStage1();
+		InitStage2();
+		InitStage3();
+		AlienActual = 0;
+		MaxAliens = 12;
+	}
+	aliensVivos = 0;
+	transicion();
+	LCD_Clear(0x0000);
+	Dibujar();
+	mostrandoStage = 1;
+	timerStage = HAL_GetTick();
+	MostrarStage(stage);
+}
+
 void InitJuego1(void)
 {
 	J1.x = 152;
@@ -268,12 +432,18 @@ void InitJuego1(void)
 	J1.vivo = 1;
 	J1.explosion = 0;
 	J1.frame_explosion = 0;
-	InitEnemigos(1);
+
+	StageActual = 1;
+	for(int i = 0; i < MAX_ALIENS; i++){
+		Enemigos[i].vivo = 0;
+		Enemigos[i].explosion = 0;
+	}
+
+	Iniciar(1);
 }
 
 void InitJuego2(void)
 {
-	//LCD_Clear(0x00);
 	J1.x = 70;
 	J1.y = 210;
 	J1.w = 17;
@@ -289,72 +459,22 @@ void InitJuego2(void)
 	J2.vivo = 1;
 	J2.explosion = 0;
 	J2.frame_explosion = 0;
-	/*
-	for (int y = 0; y < 240; y += 15){
-		LCD_Bitmap(160, y, 15, 15, tile);
-	}
-	*/
-	InitEnemigos(1);
-}
 
-void InitEnemigos(int stage)
-{
-	int stages = (stage == 1) ? 2 : (stage == 2) ? 3 : 4;
-	int aliensPorTipo = MAX_ALIENS / stages;
+	StageActual = 1;
 	for(int i = 0; i < MAX_ALIENS; i++){
-		if(modoActual == ESTADO_JUG2){
-			if(i < 4){
-				Enemigos[i].x_base = 20 + (i * 30);
-			}else{
-				Enemigos[i].x_base = 180 + ((i - 4) * 30);
-				Enemigos[i].amplitud = 15.0;
-			}
-		}else{
-			Enemigos[i].x_base = 60 + (i * 25);
-			Enemigos[i].amplitud = 40.0;
-		}
-		Enemigos[i].y_base = 80;
-		Enemigos[i].x = Enemigos[i].x_base;
-		Enemigos[i].y = -20;					//aliens vienen de arriba (escondidos)
-		Enemigos[i].vivo = 0;					//spawn secuencial
-		Enemigos[i].t = 0;
-		Enemigos[i].frecuencia = 0.05;
-		Enemigos[i].estado = ENTRANDO;
-		Enemigos[i].tipo = i / aliensPorTipo;
+		Enemigos[i].vivo = 0;
 		Enemigos[i].explosion = 0;
-		Enemigos[i].frame_explosion = 0;
-
-		if(Enemigos[i].tipo >= stages)
-		{
-			Enemigos[i].tipo = stages - 1;
-		}
-
-		switch(Enemigos[i].tipo)
-		{
-		case 0:								//alien verde
-			Enemigos[i].w = 19;
-			Enemigos[i].h = 17;
-			break;
-		case 1:								//alien rojo
-			Enemigos[i].w = 17;
-			Enemigos[i].h = 16;
-			break;
-		case 2:								//mosca
-			Enemigos[i].w = 17;
-			Enemigos[i].h = 14;
-			break;
-		case 3:								//alien azul
-			Enemigos[i].w = 19;
-			Enemigos[i].h = 17;
-			break;
-		}
 	}
+	Iniciar(1);
 }
 
 void MoverAliens(void)
 {
+	float vaiven_limpieza = vaiven;
 	vaiven += 0.035;
-	float offsetFormacion = sin(vaiven) * 30.0;
+	float offsetFormacion = sin(vaiven) * 40.0;
+	float offsetViejo = sin(vaiven_limpieza) * 40.0;
+	int dxFormacion = (int)offsetFormacion - (int)offsetViejo;
 
 
 	for(int i = 0; i < MAX_ALIENS; i++){
@@ -368,28 +488,64 @@ void MoverAliens(void)
 				switch(Enemigos[i].estado)
 				{
 				case ENTRANDO:
-					Enemigos[i].y += 1.6;
-					//float inicio_alien = (Enemigos[i].tipo == 0) ? 140 : 180;
-					float inicio_alien = 140 + (Enemigos[i].tipo * 20);
-					float lado = (Enemigos[i].tipo == 0) ? 1.0 : -1.0;
-					float progreso = (Enemigos[i].y + 20.0) / (Enemigos[i].y_base + 20);
-					if (progreso > 1.0){
-						progreso = 1.0;
+					float x_ant = Enemigos[i].x;
+					float y_ant = Enemigos[i].y;
+					if(Enemigos[i].tipo < 2){
+						Enemigos[i].y += 1.6;
+						float lado = (Enemigos[i].x_base < 160.0) ? 1.0 : -1.0;
+						float inicio_x = (lado > 0) ? 40.0 : 280.0;
+						float progreso = (Enemigos[i].y + 20.0) / (Enemigos[i].y_base + 20);
+						if (progreso > 1.0){
+							progreso = 1.0;
+						}
+						float centro_x = inicio_x + (Enemigos[i].x_base - inicio_x) * progreso;
+						float zigzag = lado * sin(Enemigos[i].y * 0.05) * Enemigos[i].amplitud * (1.0 - progreso);
+						Enemigos[i].x = centro_x + zigzag;
+					}else if(Enemigos[i].tipo == 2){
+						Enemigos[i].x += 2.5;
+					}else if(Enemigos[i].tipo == 3){
+						Enemigos[i].x -= 2.5;
 					}
-					float centro_x = inicio_alien + (Enemigos[i].x_base - inicio_alien) * progreso;
-					float zigzag = lado * sin(Enemigos[i].y * 0.04) * Enemigos[i].amplitud;
-					Enemigos[i].x = centro_x + zigzag;
 
-					if(Enemigos[i].y >= Enemigos[i].y_base)
+
+					int dx = (int)Enemigos[i].x - (int)x_ant;
+					int dy = (int)Enemigos[i].y - (int)y_ant;
+					//int margen = 6;
+					if(dx > 0)
 					{
-						Enemigos[i].y = Enemigos[i].y_base;
-						Enemigos[i].estado = FORMACION;
+						FillRect((int)x_ant, (int)y_ant, dx, Enemigos[i].h, 0x0000);
+					}else if(dx < 0){
+						FillRect((int)Enemigos[i].x + Enemigos[i].w, (int)y_ant, -dx, Enemigos[i].h, 0x0000);
 					}
+					if(dy > 0)
+					{
+						FillRect((int)x_ant, (int)y_ant, Enemigos[i].w, dy, 0x0000);
+					}
+
+					if(Enemigos[i].tipo < 2){
+						if(Enemigos[i].y >= Enemigos[i].y_base){
+							FillRect((int)x_ant, (int)y_ant, Enemigos[i].w + 2, Enemigos[i].h + 2, 0x0000);
+							Enemigos[i].y = Enemigos[i].y_base;
+							Enemigos[i].estado = FORMACION;
+						}
+					}else{
+						if((Enemigos[i].tipo == 2 && Enemigos[i].x >= Enemigos[i].x_base) || (Enemigos[i].tipo == 3 && Enemigos[i].x <= Enemigos[i].x_base)){
+							Enemigos[i].x = Enemigos[i].x_base;
+							Enemigos[i].estado = FORMACION;
+						}
+					}
+
 					break;
 				case FORMACION:
 					Enemigos[i].x = Enemigos[i].x_base + offsetFormacion;
 					Enemigos[i].y = Enemigos[i].y_base;
 					FrameADibujar = frameActual % 2;
+					if(dxFormacion > 0)
+					{
+						FillRect((int)Enemigos[i].x_base + offsetViejo, (int)Enemigos[i].y, dxFormacion, Enemigos[i].h, 0x0000);
+					}else if(dxFormacion < 0){
+						FillRect((int)Enemigos[i].x + Enemigos[i].w, (int)Enemigos[i].y, -dxFormacion, Enemigos[i].h, 0x0000);
+					}
 					break;
 				}
 				const uint16_t *spriteActual;
@@ -439,8 +595,8 @@ void MoverNaves(void)
 				FillRect((int)x_prev, (int)J1.y, dx, J1.h, 0x0000);
 			}else if(dx < 0){
 				FillRect((int)J1.x + J1.w, (int)J1.y, -dx, J1.h, 0x0000);
-				LCD_Sprite((int)J1.x, (int)J1.y, J1.w, J1.h, navesita, 3, frameActual % 3, 0, 0, 0x0000);
 			}
+			LCD_Sprite((int)J1.x, (int)J1.y, J1.w, J1.h, navesita, 3, frameActual % 3, 0, 0, 0x0000);
 		}
 	}
 
@@ -462,8 +618,8 @@ void MoverNaves(void)
 				FillRect((int)x_prev, (int)J2.y, dx, J2.h, 0x0000);
 			}else if(dx < 0){
 				FillRect((int)J2.x + J2.w, (int)J2.y, -dx, J1.h, 0x0000);
-				LCD_Sprite((int)J2.x, (int)J2.y, J2.w, J2.h, navesita, 3, frameActual % 3, 1, 0, 0x0000);
 			}
+			LCD_Sprite((int)J2.x, (int)J2.y, J2.w, J2.h, navesita, 3, frameActual % 3, 1, 0, 0x0000);
 		}
 	}
 }
@@ -478,17 +634,22 @@ void Marco(void)
 
 void Dibujar(void)
 {
-	if(modoActual == ESTADO_JUG1)
-	{
-		LCD_Print("1UP", 5, 2, 1, 0xF800, 0x0000);
-		LCD_Print("00", 8, 12, 1, 0xFFFF, 0x0000);
+	if(modoActual  == ESTADO_JUG1){
+		LCD_Print("1UP", 10, 5, 1, 0xF800, 0x0000);
+		sprintf(Score, "%05d", scoreJ1);
+		LCD_Print(Score, 10, 15, 1, 0xFFFF, 0x0000);
 		LCD_Print("HIGH SCORE", 240, 2, 1, 0xF800, 0x0000);
-		LCD_Print("20000", 260, 12, 1, 0xFFFF, 0x0000);
-	}else if(modoActual == ESTADO_JUG2){
-		LCD_Print("1UP", 14, 2, 1, 0xF800, 0x0000);
-		LCD_Print("00", 18, 12, 1, 0xFFFF, 0x0000);
-		LCD_Print("2UP", 300, 2, 1, 0xF800, 0x0000);
-		LCD_Print("00", 290, 12, 1, 0xFFFF, 0x0000);
+		LCD_Print("30000", 260, 12, 1, 0xFFFF, 0x0000);
+	}
+
+	if(modoActual == ESTADO_JUG2)
+	{
+		LCD_Print("1UP", 10, 5, 1, 0xF800, 0x0000);
+		sprintf(Score, "%05d", scoreJ1);
+		LCD_Print(Score, 10, 15, 1, 0xFFFF, 0x0000);
+		LCD_Print("2UP", 280, 5, 1, 0xF800, 0x0000);
+		sprintf(Score, "%05d", scoreJ2);
+		LCD_Print(Score, 265, 15, 1, 0xFFFF, 0x0000);
 	}
 }
 
@@ -524,11 +685,35 @@ void ActualizarBalas(void)
 			}
 		}
 	}
+	//Balas de aliens
+	for(int i = 0; i < MAX_BALAS; i++){
+		if(balas_aliens[i].activo){
+			FillRect((int)balas_aliens[i].x, (int)balas_aliens[i].y, 5, 10, 0x0000);
+			balas_aliens[i].y += 3.5; // Velocidad de caída
+			if(balas_aliens[i].y > 230){
+				balas_aliens[i].activo = 0;
+			}else{
+				LCD_Sprite((int)balas_aliens[i].x, (int)balas_aliens[i].y, 5, 10, disparo_alien, 2, 0, 0, 0, 0x0000);
+			}
+		}
+	}
 }
+
 
 int ChequearColision(float x1, float y1, int w1, int h1, float x2, float y2, int w2, int h2)
 {
 	return (x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2);
+}
+
+void GuardarScoreSD(char* evento) {
+	fres = f_open(&fil, "SCORE.TXT", FA_WRITE | FA_OPEN_ALWAYS);
+	if(fres == FR_OK){
+		f_lseek(&fil, f_size(&fil));
+		char linSD[60];
+		sprintf(linSD, "%s | J1:%d J2:%d\n",evento, scoreJ1, scoreJ2);
+		f_puts(linSD, &fil);
+		f_close(&fil);
+	}
 }
 
 void Ganador_J1(void)
@@ -536,23 +721,39 @@ void Ganador_J1(void)
 	LCD_Clear(0x0000);
 	Marco();
 
-	LCD_Print("1UP", 40, 10, 1, 0xF800, 0x0000);
-	sprintf(Score, "SCORE: %05d", 49480); // Ejemplo de score
-	//LCD_Print(Score, 35, 22, 1, 0x07FF, 0x0000); cuando ya este funcionando el juego usar esta
-	LCD_Print("123218", 35, 22, 1, 0x07FF, 0x0000);
+	LCD_Print("YOUR SCORE", 40, 15, 1, 0xF800, 0x0000);
+	sprintf(Score, "%05d", scoreJ1);
+	LCD_Print(Score, 40, 25, 1, 0x07FF, 0x0000);
 
-	LCD_Print("HIGH SCORE", 110, 10, 1, 0xF800, 0x0000);
-	//LCD_Print(Score, 35, 22, 1, 0x07FF, 0x0000); cuando ya este funcionando el juego usar esta
-	LCD_Print("123218", 130, 22, 1, 0x07FF, 0x0000);
+
+	LCD_Print("HIGH SCORE", 200, 15, 1, 0xF800, 0x0000);
+	int highscore = (scoreJ1 >= scoreJ2) ? scoreJ1 : scoreJ2;
+	sprintf(Score, "%05d", highscore);
+	LCD_Print(Score, 200, 25, 1, 0x07FF, 0x0000);
 
 	LCD_Print("PLAYER 1 WINS", 60, 75, 2, 0xF800, 0x0000);
 
-	LCD_Print("TOP 5", 135, 150, 1, 0xFD20, 0x0000);
-	LCD_Print("SCORE", 110, 165, 1, 0x07FF, 0x0000);
-	LCD_Print("NAME", 185, 165, 1, 0x07FF, 0x0000);
-
+	char linea[30];
+	sprintf(linea, "P1: %05d", scoreJ1);
+	LCD_Print(linea, 80, 120, 1, 0xFFFF, 0x0000);
+	sprintf(linea, "P2: %05d", scoreJ2);
+	LCD_Print(linea, 80, 135, 1, 0xFFFF, 0x0000);
+	LCD_Print("TOP 5", 145, 155, 1, 0xFD20, 0x0000);
+	LCD_Print("SCORE    NAME ", 100, 170, 1, 0x07FF, 0x0000);
 	LCD_Print("1ST  49480   JO", 80, 180, 1, 0xFFFF, 0x0000);
 	LCD_Print("2ND  20000   EP", 80, 192, 1, 0xFFFF, 0x0000);
+
+	 fres = f_open(&fil, "SCORE.TXT", FA_WRITE | FA_OPEN_ALWAYS);
+	 if(fres == FR_OK){
+		 f_lseek(&fil, f_size(&fil));
+		 char linSD[40];
+		 sprintf(linSD, "GANADOR J1 | J1:%d J2:%d\n", scoreJ1, scoreJ2);
+		 f_puts(linSD, &fil);
+		 f_close(&fil);
+	 }
+	 GuardarScoreSD("VICTORIA J1");
+	 Musica_Comando(0x07);
+
 }
 
 void Ganador_J2(void)
@@ -560,24 +761,35 @@ void Ganador_J2(void)
 	LCD_Clear(0x0000);
 	Marco();
 
-	LCD_Print("1UP", 40, 10, 1, 0xF800, 0x0000);
-	sprintf(Score, "SCORE: %05d", 49480); // Ejemplo de score
-	//LCD_Print(Score, 35, 22, 1, 0x07FF, 0x0000); cuando ya este funcionando el juego usar esta
-	LCD_Print("123218", 35, 22, 1, 0x07FF, 0x0000);
+	LCD_Print("YOUR SCORE", 40, 15, 1, 0xF800, 0x0000);
+	sprintf(Score, "%05d", scoreJ2);
+	LCD_Print(Score, 40, 25, 1, 0x07FF, 0x0000);
 
-	LCD_Print("HIGH SCORE", 110, 10, 1, 0xF800, 0x0000);
-	//LCD_Print(Score, 35, 22, 1, 0x07FF, 0x0000); cuando ya este funcionando el juego usar esta
-	LCD_Print("123218", 130, 22, 1, 0x07FF, 0x0000);
+
+	LCD_Print("HIGH SCORE", 200, 15, 1, 0xF800, 0x0000);
+	int highscore = (scoreJ1 >= scoreJ2) ? scoreJ1 : scoreJ2;
+	sprintf(Score, "%05d", highscore);
+	LCD_Print(Score, 200, 25, 1, 0x07FF, 0x0000);
 
 	LCD_Print("PLAYER 2 WINS", 60, 75, 2, 0xF800, 0x0000);
 
-	LCD_Print("TOP 5", 135, 150, 1, 0xFD20, 0x0000);
-	LCD_Print("SCORE", 110, 165, 1, 0x07FF, 0x0000);
-	LCD_Print("NAME", 185, 165, 1, 0x07FF, 0x0000);
+	char linea[30];
+	sprintf(linea, "P1: %05d", scoreJ1);
+	LCD_Print(linea, 80, 120, 1, 0xFFFF, 0x0000);
+	sprintf(linea, "P2: %05d", scoreJ2);
+	LCD_Print(linea, 80, 135, 1, 0xFFFF, 0x0000);
 
+	LCD_Print("TOP 5", 145, 150, 1, 0xFD20, 0x0000);
+	LCD_Print("SCORE    NAME", 100, 170, 1, 0x07FF, 0x0000);
 	LCD_Print("1ST  49480   JO", 80, 180, 1, 0xFFFF, 0x0000);
 	LCD_Print("2ND  68929   EP", 80, 192, 1, 0xFFFF, 0x0000);
+
+	GuardarScoreSD("VICTORIA J2");
+	Musica_Comando(0x07);
+
 }
+
+
 
 void transicion(void)
 {
@@ -634,11 +846,11 @@ int main(void)
   LCD_Init();
   LCD_Clear(0x00);
 
-  HAL_Delay(1000); // Dale un segundo completo de vida a la SD
+  HAL_Delay(1000);
 
   HAL_UART_Transmit(&huart2, (uint8_t*)"SD: Intentando conectar...\r\n", 28, 1000);
 
-    // Hacemos un bucle de 5 intentos para montar
+    // Bucle de 5 intentos para montar
   int intentos = 0;
   do {
 	  fres = f_mount(&fs, "", 1);
@@ -651,7 +863,7 @@ int main(void)
 
   if (fres == FR_OK) {
 
-	  HAL_UART_Transmit(&huart2, (uint8_t*)"\r\nSD: ¡Montada nítido!\r\n", 25, 1000);
+	  HAL_UART_Transmit(&huart2, (uint8_t*)"\r\nSD: Tarjeta Montada \r\n", 25, 1000);
 
         // Abrimos para escribir el Score inicial
 	  fres = f_open(&fil, "SCORE.TXT", FA_WRITE | FA_OPEN_ALWAYS);
@@ -723,13 +935,21 @@ int main(void)
 		  		  InitJuego2();
 		  		  modoActual = ESTADO_JUG2;
 		  	  }
-		  	  Dibujar();
+		  	  //Dibujar();
 		  }
 		  break;
 
 	  case ESTADO_JUG1:
 
 	  case ESTADO_JUG2:
+		  //Mostrar Stage
+		  if(mostrandoStage){
+			  if(HAL_GetTick() - timerStage >= DURACION_STAGE_MS){
+				  Limpiar();
+				  mostrandoStage = 0;
+			  }
+			  break;
+		  }
 		  //Movimiento de aliens
 		  if(tick - timerAliens >= 50){
 			  MoverAliens();
@@ -751,70 +971,105 @@ int main(void)
 			  timerNaves = tick;
 		  }
 		  //Disparo de balas
-		  if(tick - timerBalas >= 15)
-		          {
-		              ActualizarBalas();
+		  if(tick - timerBalas >= 15){
+			  ActualizarBalas();
+			  // Flags para saber si hay que redibujar (Deben estar en PV o inicializadas aquí)
 
-		              // Flags para saber si hay que redibujar (Deben estar en PV o inicializadas aquí)
-		              uint8_t hayHitJ1 = 0;
-		              uint8_t hayHitJ2 = 0;
+			  uint8_t hayHitJ1 = 0;
+			  uint8_t hayHitJ2 = 0;
 
-		              for(int j = 1; j <= (modoActual == ESTADO_JUG2 ? 2 : 1); j++)
-		              {
-		                  Bala* listaBalas = (j == 1) ? disparo_J1 : disparo_J2;
-		                  int* scoreActual = (j == 1) ? &scoreJ1 : &scoreJ2;
+			  for(int j = 1; j <= (modoActual == ESTADO_JUG2 ? 2 : 1); j++)
+			  {
+				  Bala* listaBalas = (j == 1) ? disparo_J1 : disparo_J2;
+				  int* scoreActual = (j == 1) ? &scoreJ1 : &scoreJ2;
 
-		                  for(int b = 0; b < MAX_BALAS; b++)
-		                  {
-		                      if(listaBalas[b].activo)
-		                      {
-		                          for(int a = 0; a < MAX_ALIENS; a++)
-		                          {
-		                              if(Enemigos[a].vivo && !Enemigos[a].explosion)
-		                              {
-		                                  if(ChequearColision(listaBalas[b].x, listaBalas[b].y, 5, 10, Enemigos[a].x, Enemigos[a].y, Enemigos[a].w, Enemigos[a].h))
-		                                  {
-		                                      listaBalas[b].activo = 0;
-		                                      Enemigos[a].explosion = 1;
-		                                      Enemigos[a].frame_explosion = 0;
-		                                      *scoreActual += 100;
+				  for(int b = 0; b < MAX_BALAS; b++)
+				  {
+					  if(listaBalas[b].activo)
+					  {
+						  for(int a = 0; a < MAX_ALIENS; a++)
+						  {
+							  if(Enemigos[a].vivo && !Enemigos[a].explosion)
+							  {
+								  if(ChequearColision(listaBalas[b].x, listaBalas[b].y, 5, 10, Enemigos[a].x, Enemigos[a].y, Enemigos[a].w, Enemigos[a].h))
+								  {
+									  FillRect((int)listaBalas[b].x, (int)listaBalas[b].y, 5, 10, 0x0000);
+									  listaBalas[b].activo = 0;
+									  Enemigos[a].explosion = 1;
+									  Enemigos[a].frame_explosion = 0;
+									  *scoreActual += 100;
 
-		                                      if(j == 1) hayHitJ1 = 1;
-		                                      else hayHitJ2 = 1;
+									  if(j == 1) hayHitJ1 = 1;
+									  else hayHitJ2 = 1;
 
-		                                      if(Enemigos[a].tipo == 0){
-		                                    	  Musica_Comando(0x08);			//rojo
-		                                      }
-		                                      else if(Enemigos[a].tipo == 1){
-		                                    	Musica_Comando(0x0a);  			//verde
-		                                      }
-		                                      else if(Enemigos[a].tipo == 2){
-		                                    	  Musica_Comando(0x09);			//mosca
-		                                      }
-		                                      else{
-		                                    	  Musica_Comando(0x0b);			//azul
-		                                      }
-		                                  }
+									  if(Enemigos[a].tipo == 0){
+
+										  Musica_Comando(0x08);			//rojo
+									  }
+									  else if(Enemigos[a].tipo == 1){
+										  Musica_Comando(0x0a);  			//verde
 		                              }
-		                          }
-		                      }
-		                  }
-		              }
 
-		              // --- ACTUALIZACIÓN DE PANTALLA (Fuera de los ciclos para evitar lag) ---
-		              if(hayHitJ1)
-		              {
-		                  sprintf(Score, "%d", scoreJ1);
-		                  LCD_Print(Score, 8, 12, 1, 0xFFFF, 0x0000);
-		              }
-		              if(hayHitJ2)
-		              {
-		                  sprintf(Score, "%d", scoreJ2);
-		                  LCD_Print(Score, 290, 12, 1, 0xFFFF, 0x0000);
-		              }
+									  else if(Enemigos[a].tipo == 2){
+										  Musica_Comando(0x09);			//mosca
+									  }
+									  else{
+										  Musica_Comando(0x0b);			//azul
+									  }
+									  break;
 
-		              timerBalas = tick;
-		          }
+								  }
+
+							  }
+
+						  }
+
+					  }
+
+				  }
+
+			  }
+			  //disparo de aliens azules
+			  for(int i = 0; i < MAX_BALAS; i++)
+			  {
+				  if (balas_aliens[i].activo)
+				  {
+					  if (J1.vivo && !J1.explosion){
+						  if (ChequearColision(balas_aliens[i].x, balas_aliens[i].y, 5, 10, J1.x, J1.y, J1.w, J1.h)){
+							  FillRect((int)balas_aliens[i].x, (int)balas_aliens[i].y, 5, 10, 0x0000);
+							  balas_aliens[i].activo = 0;
+							  J1.explosion = 1;
+							  J1.frame_explosion = 0;
+							  Musica_Comando(0x04);
+						  }
+					  }
+					  if (modoActual == ESTADO_JUG2 && J2.vivo && !J2.explosion)
+					  {
+						  if (ChequearColision(balas_aliens[i].x, balas_aliens[i].y, 5, 10, J2.x, J2.y, J2.w, J2.h)){
+							  FillRect((int)balas_aliens[i].x, (int)balas_aliens[i].y, 5, 10, 0x0000);
+							  balas_aliens[i].activo = 0;
+							  J2.explosion = 1;
+							  J2.frame_explosion = 0;
+							  Musica_Comando(0x04);
+						  }
+					  }
+				  }
+			  }
+			  // --- ACTUALIZACIÓN DE PANTALLA (Fuera de los ciclos para evitar lag) ---
+
+			  if(hayHitJ1)
+			  {
+				  sprintf(Score, "%05d", scoreJ1);
+				  LCD_Print(Score, 10, 15, 1, 0xFFFF, 0x0000);
+			  }
+			  if(hayHitJ2)
+			  {
+				  sprintf(Score, "%05d", scoreJ2);
+				  LCD_Print(Score, 265, 15, 1, 0xFFFF, 0x0000);
+			  }
+
+			  timerBalas = tick;
+		  }
 		  //Movimiento en formacion de aliens
 		  if(tick - timerAnimacionAliens >= 200)
 		  {
@@ -822,7 +1077,7 @@ int main(void)
 			  timerAnimacionAliens = tick;
 		  }
 		  //spawn de aliens desde arriba
-		  if(tick - tiempoSpawn >= 800 && AlienActual < MAX_ALIENS)
+		  if(tick - tiempoSpawn >= 800 && AlienActual < MaxAliens)
 		  {
 			  Enemigos[AlienActual].vivo = 1;
 			  Enemigos[AlienActual].y = -20;
@@ -830,14 +1085,15 @@ int main(void)
 			  tiempoSpawn = tick;
 		  }
 		  //Colisiones
-		  if(tick - timerExplo >= 60) {
-			  for(int i=0; i<MAX_ALIENS; i++) {
-				  if(Enemigos[i].explosion) {
+		  if(tick - timerExplo >= 60){
+			  for(int i=0; i < MAX_ALIENS; i++){
+				  if(Enemigos[i].explosion){
 					  Enemigos[i].frame_explosion++;
-					  if(Enemigos[i].frame_explosion >= 4) {
+					  if(Enemigos[i].frame_explosion >= 4){
 						  FillRect((int)Enemigos[i].x, (int)Enemigos[i].y, 30, 30, 0x0000);
 						  Enemigos[i].explosion = 0;
-						  Enemigos[i].vivo = 0; }
+						  Enemigos[i].vivo = 0;
+					  }
 				  }
 			  }
 			  //explosion nave 1
@@ -846,40 +1102,63 @@ int main(void)
 				  J1.frame_explosion++;
 				  if(J1.frame_explosion >= 4)
 				  {
-					  FillRect((int)J1.x - 5, (int)J1.y - 5, 32, 32, 0x0000);
+					  FillRect((int)J1.x - 5, (int)J1.y - 5, 36, 36, 0x0000);
 					  J1.explosion = 0;
 					  J1.vivo = 0;
 					  Musica_Comando(0x07);
-					  // --- GUARDAR SCORE FINAL EN SD ---//
-					  fres = f_open(&fil, "SCORE.TXT", FA_WRITE | FA_OPEN_ALWAYS);
-					  if(fres == FR_OK)
-					  {
-						  f_lseek(&fil, f_size(&fil));
-						  sprintf(buffer, "Final Score J1: %d\n", scoreJ1);
-						  f_puts(buffer, &fil);
-						  f_close(&fil);
-					  }
+
 					  if(modoActual == ESTADO_JUG1){
 						  CausaVictoria = 1;
+						  modoActual = ESTADO_VICTORIA;
+						  Musica_Comando(0x05);
+					  }else if(modoActual == ESTADO_JUG2){
+						  CausaVictoria = 3;
 						  modoActual = ESTADO_VICTORIA;
 						  Musica_Comando(0x05);
 					  }
 				  }
 			  }
 			  if(modoActual == ESTADO_JUG2  && J2.explosion){
-				  FillRect((int)J2.x - 5, (int)J2.y - 5, 32, 32, 0x0000);
-				  J2.explosion = 0;
-				  J2.vivo = 0;
-				  CausaVictoria = 2;
-				  modoActual = ESTADO_VICTORIA;
-				  Musica_Comando(0x05);
+				  J2.frame_explosion++;
+				  if(J2.frame_explosion >= 4)
+				  {
+					  FillRect((int)J2.x - 5, (int)J2.y - 5, 36, 36, 0x0000);
+					  J2.explosion = 0;
+					  J2.vivo = 0;
+					  CausaVictoria = 2;
+					  modoActual = ESTADO_VICTORIA;
+					  Musica_Comando(0x05);
+				  }
 			  }
 			  timerExplo = tick;
 		  }
 
+		  //
+
+		  //Disparo de aliens
+		  if(tick - timerBalasAliens >= 1200)
+		  {
+			  for(int i = 0; i < MAX_ALIENS; i++){
+				  if(Enemigos[i].vivo && Enemigos[i].tipo == 3 && Enemigos[i].estado == FORMACION){
+					  if((tick & 0x1F) > 10){
+						  for(int b = 0; b < MAX_BALAS; b++){
+							  if(!balas_aliens[b].activo){
+								  balas_aliens[b].x = Enemigos[i].x + (Enemigos[i].w / 2);
+								  balas_aliens[b].y = Enemigos[i].y + Enemigos[i].h;
+								  balas_aliens[b].activo = 1;
+								  break;
+							  }
+						  }
+					  }
+				  }
+			  }
+			  timerBalasAliens = tick;
+		  }
+
+
 		  //Contar aliens vivos
 		  aliensVivos = 0;
-		  for(int i = 0; i < MAX_ALIENS; i++)
+		  for(int i = 0; i < MaxAliens; i++)
 		  {
 			  if(Enemigos[i].vivo || Enemigos[i].explosion){
 				  aliensVivos++;
@@ -887,14 +1166,20 @@ int main(void)
 		  }
 
 		  //Conteo de aliens vivos
-		  if(AlienActual >= MAX_ALIENS && aliensVivos == 0 && modoActual != ESTADO_VICTORIA ){
-			  CausaVictoria = 0;
-			  modoActual = ESTADO_VICTORIA;
-			  Musica_Comando(0x07);
+		  if(AlienActual >= MaxAliens && aliensVivos == 0 && modoActual != ESTADO_VICTORIA ){
+			  if(StageActual < MaxStages)
+			  {
+				  StageActual++;
+				  Iniciar(StageActual);
+			  }else{
+				  CausaVictoria = 0;
+				  modoActual = ESTADO_VICTORIA;
+				  Musica_Comando(0x07);
+			  }
 		  }
 
 		  //Colision de aliens contra naves
-		  for(int i=0; i<MAX_ALIENS; i++) {
+		  for(int i=0; i < MAX_ALIENS; i++) {
 			  if(Enemigos[i].vivo && !Enemigos[i].explosion)
 			  {
 				  if(J1.vivo && !J1.explosion && ChequearColision(Enemigos[i].x, Enemigos[i].y, Enemigos[i].w, Enemigos[i].h, J1.x, J1.y, J1.w, J1.h)){
@@ -914,26 +1199,30 @@ int main(void)
 		  static uint8_t pantallaGanador = 0;
 
 		  if(!pantallaGanador){
-			  if(modoActual == ESTADO_VICTORIA){
-				  if(CausaVictoria == 0 || CausaVictoria == 1){
-					  Ganador_J1();
-				  }else if(CausaVictoria == 2){
-					  Ganador_J1();
+			  if(CausaVictoria == 0){
+				  if(modoActual == ESTADO_VICTORIA && scoreJ2 > scoreJ1){
+					  Ganador_J2();
 				  }else{
-					  if(scoreJ1 >= scoreJ2){
-						  Ganador_J1();
-					  }else{
-						  Ganador_J2();
-					  }
+					  Ganador_J1();
 				  }
-				  pantallaGanador = 1;
+			  }else if(CausaVictoria == 1){
+				  Ganador_J1();
+			  }else if(CausaVictoria == 2){
+				  Ganador_J1();
+			  }else{
+				  Ganador_J2();
 			  }
+			  pantallaGanador = 1;
 		  }
 
-		  if(nave1_sel){
+		  if(nave1_sel || nave2_sel){
 			  nave1_sel = 0;
+			  nave2_sel = 0;
 			  pantallaGanador = 0;
 			  CausaVictoria = 0;
+			  StageActual = 1;
+			  MaxAliens = 4;
+			  mostrandoStage = 0;
 			  modoActual = ESTADO_MENU;
 			  musicaMenu = 0;
 			  LCD_Clear(0x0000);
@@ -947,7 +1236,6 @@ int main(void)
 				  Enemigos[i].explosion = 0;
 			  }
 		  }
-
 		  break;
 	  }
 

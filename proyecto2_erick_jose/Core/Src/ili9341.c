@@ -143,6 +143,7 @@ void LCD_Init(void) {
 //***************************************************************************************************************************************
 // Función para enviar comandos a la LCD - parámetro (comando)
 //***************************************************************************************************************************************
+
 void LCD_CMD(uint8_t cmd) {
 	LCD_CS_L();
 	LCD_DC_L();
@@ -158,15 +159,44 @@ void LCD_CMD(uint8_t cmd) {
 
 	LCD_CS_H();
 }
+
+
+/*
+void LCD_CMD(uint8_t cmd) {
+    LCD_CS_L();
+    LCD_DC_L();
+
+    while (SPI1->SR & SPI_SR_BSY);
+    while (!(SPI1->SR & SPI_SR_TXE));
+
+    // Cambia SPI1->DR = cmd; por esto:
+    *(__IO uint8_t *)&SPI1->DR = cmd;
+
+    while (SPI1->SR & SPI_SR_BSY);
+    LCD_CS_H();
+}
+*/
 //***************************************************************************************************************************************
 // Función para enviar datos a la LCD - parámetro (dato)
 //***************************************************************************************************************************************
+/*
+static inline void SPI_SendByte(uint8_t data)
+{
+	while(!(SPI1 -> SR & SPI_SR_TXE));
+	*(__IO uint8_t*)&SPI1->DR = data;
+	while(SPI1->SR & SPI_SR_BSY);
+}
+*/
+
 void LCD_DATA(uint8_t data) {
 	LCD_CS_L();
 	LCD_DC_H();
 	HAL_SPI_Transmit(&hspi1, &data, 1, 1);
+	//SPI_SendByte(data);
 	LCD_CS_H();
 }
+
+
 //***************************************************************************************************************************************
 // Función para definir rango de direcciones de memoria con las cuales se trabajara (se define una ventana)
 //***************************************************************************************************************************************
@@ -187,6 +217,7 @@ void SetWindows(unsigned int x1, unsigned int y1, unsigned int x2,
 //***************************************************************************************************************************************
 // Función para borrar la pantalla - parámetros (color)
 //***************************************************************************************************************************************
+
 void LCD_Clear(unsigned int c) {
 	unsigned int x, y;
 //	HAL_GPIO_WritePin(LCD_DC_GPIO_Port, LCD_DC_Pin, GPIO_PIN_SET);
@@ -204,6 +235,9 @@ void LCD_Clear(unsigned int c) {
 	LCD_CS_H();
 
 }
+
+
+
 //***************************************************************************************************************************************
 // Función para dibujar una línea horizontal - parámetros ( coordenada x, cordenada y, longitud, color)
 //***************************************************************************************************************************************
@@ -258,6 +292,7 @@ void Rect(unsigned int x, unsigned int y, unsigned int w, unsigned int h,
 //***************************************************************************************************************************************
 // Función para dibujar un rectángulo relleno - parámetros ( coordenada x, cordenada y, ancho, alto, color)
 //***************************************************************************************************************************************
+
 void FillRect(unsigned int x, unsigned int y, unsigned int w, unsigned int h,
 		unsigned int c) {
 	LCD_CMD(0x02c); // write_memory_start
@@ -280,6 +315,28 @@ void FillRect(unsigned int x, unsigned int y, unsigned int w, unsigned int h,
 	//	HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_SET);
 	LCD_CS_H();
 }
+/*
+void FillRect(unsigned int x, unsigned int y, unsigned int w, unsigned int h,
+        unsigned int c)
+{
+    LCD_CMD(0x02c);
+    LCD_DC_H();
+    LCD_CS_L();
+    SetWindows(x, y, x + w - 1, y + h - 1);
+    LCD_DC_H();   // SetWindows deja DC en estado de comando, restaurar a dato
+    LCD_CS_L();
+
+    uint8_t hi = c >> 8;
+    uint8_t lo = c & 0xFF;
+    unsigned int total = w * h;
+
+    for(unsigned int i = 0; i < total; i++){
+        SPI_SendByte(hi);
+        SPI_SendByte(lo);
+    }
+    LCD_CS_H();
+}
+*/
 //***************************************************************************************************************************************
 // Función para dibujar texto - parámetros ( texto, coordenada x, cordenada y, color, background)
 //***************************************************************************************************************************************
@@ -348,6 +405,7 @@ void LCD_Print(char *text, int x, int y, int fontSize, int color,
 //***************************************************************************************************************************************
 // Función para dibujar una imagen a partir de un arreglo de colores (Bitmap) Formato (Color 16bit R 5bits G 6bits B 5bits)
 //***************************************************************************************************************************************
+
 void LCD_Bitmap(unsigned int x, unsigned int y, unsigned int width,
 		unsigned int height, const uint16_t *bitmap) {
 	//LCD_CMD(0x02c); // write_memory_start
@@ -368,6 +426,23 @@ void LCD_Bitmap(unsigned int x, unsigned int y, unsigned int width,
 	//HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_SET);
 	LCD_CS_H();
 }
+/*
+void LCD_Bitmap(unsigned int x, unsigned int y, unsigned int width, unsigned int height, const uint16_t *bitmap) {
+    SetWindows(x, y, x + width - 1, y + height - 1);
+    // SetWindows ya terminó y dejó el CS en HIGH.
+
+    LCD_DC_H(); // Modo datos
+    LCD_CS_L(); // BAJAR CS para toda la ráfaga de píxeles
+
+    unsigned int total_pixels = width * height;
+    for (unsigned int i = 0; i < total_pixels; i++) {
+        uint16_t pixel = bitmap[i];
+        SPI_SendByte(pixel >> 8);
+        SPI_SendByte(pixel & 0xFF);
+    }
+    LCD_CS_H(); // Subir CS al terminar la imagen
+}
+*/
 //***************************************************************************************************************************************
 // Función para dibujar una imagen a partir de un arreglo de colores (Bitmap) Formato (Color 16bit R 5bits G 6bits B 5bits) con color transparente
 //***************************************************************************************************************************************
@@ -394,6 +469,7 @@ void LCD_BitmapTransparent(uint16_t x, uint16_t y, uint16_t width,
 //***************************************************************************************************************************************
 // Función para dibujar una imagen sprite - los parámetros columns = número de imagenes en el sprite, index = cual desplegar, flip = darle vuelta
 //***************************************************************************************************************************************
+
 void LCD_Sprite(int x, int y, int width, int height, const uint16_t *bitmap,
 		int columns, int index, char flip, char offset, uint16_t color_fondo) {
 	//LCD_CMD(0x02c); // write_memory_start
@@ -439,24 +515,44 @@ void LCD_Sprite(int x, int y, int width, int height, const uint16_t *bitmap,
 	//HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_SET);
 	LCD_CS_H();
 }
+/*
+void LCD_Sprite(int x, int y, int width, int height, const uint16_t *bitmap,
+        int columns, int index, char flip, char offset, uint16_t color_fondo)
+{
+    LCD_DC_H();
+    LCD_CS_L();
+    SetWindows(x, y, x + width - 1, y + height - 1);
+    // SetWindows llama LCD_CMD y LCD_DATA que manejan su propio CS
+    // Necesitamos bajar CS de nuevo para los datos del sprite
+    LCD_DC_H();
+    LCD_CS_L();
 
-void LCD_SpriteY(int x, int y, int width, int height, const uint16_t *bitmap,
-				int columns, int index, int col, uint16_t color_fondo) {
-	LCD_DC_H();
-	LCD_CS_L();
-	SetWindows(x, y, x, y + height - 1);
+    int ancho = width * columns;
+    int k = 0;
 
-	int ancho = width * columns;
-
-	for(int j = 0; j < height; j++){
-		int k =  j * ancho + index * width + col;
-		uint16_t pixel = bitmap[k];
-		if(pixel == color_fondo){
-			pixel = 0x0000;
-		}
-		LCD_DATA(pixel >> 8);
-		LCD_DATA(pixel & 0xFF);
-	}
-	LCD_CS_H();
+    if(flip){
+        for(int j = 0; j < height; j++){
+            k = j * ancho + index * width - 1 - offset + width;
+            for(int i = 0; i < width; i++){
+                uint16_t pixel = bitmap[k];
+                if(pixel == color_fondo) pixel = 0x0000;
+                SPI_SendByte(pixel >> 8);   // sin toggle CS
+                SPI_SendByte(pixel & 0xFF);
+                k--;
+            }
+        }
+    } else {
+        for(int j = 0; j < height; j++){
+            k = j * ancho + index * width + 1 + offset;
+            for(int i = 0; i < width; i++){
+                uint16_t pixel = bitmap[k];
+                if(pixel == color_fondo) pixel = 0x0000;
+                SPI_SendByte(pixel >> 8);   // sin toggle CS
+                SPI_SendByte(pixel & 0xFF);
+                k++;
+            }
+        }
+    }
+    LCD_CS_H();
 }
-
+*/
