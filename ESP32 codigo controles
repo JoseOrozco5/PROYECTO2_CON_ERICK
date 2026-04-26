@@ -1,0 +1,104 @@
+#include <ps5Controller.h>
+
+// Estado anterior de cada botón — para detectar cuando cambia
+bool estadoIzq = false;
+bool estadoDer = false;
+bool estadoArr = false;
+bool estadoAbj = false;
+bool estadoDis = false;
+bool estadoSel = false;
+
+// Zona muerta del joystick — valores dentro de este rango se ignoran
+#define UMBRAL_IZQ  -30
+#define UMBRAL_DER   30
+
+// Comandos de un byte que se envían al STM32 por Serial
+#define CMD_IZQ      0x01  // joystick izquierda presionado
+#define CMD_IZQ_OFF  0x02  // joystick izquierda soltado
+#define CMD_DER      0x03  // joystick derecha presionado
+#define CMD_DER_OFF  0x04  // joystick derecha soltado
+#define CMD_DIS      0x05  // R2 presionado (disparo)
+#define CMD_DIS_OFF  0x06  // R2 soltado
+#define CMD_SEL      0x07  // Cruz presionada (seleccionar)
+#define CMD_SEL_OFF  0x08  // Cruz soltada
+#define CMD_ARR      0x09  // flecha arriba presionada
+#define CMD_ARR_OFF  0x0A  // flecha arriba soltada
+#define CMD_ABJ      0x0B  // flecha abajo presionada
+#define CMD_ABJ_OFF  0x0C  // flecha abajo soltada
+
+void setup() {
+  Serial.begin(9600);
+
+  // Iniciar conexión Bluetooth con la MAC del control
+  ps5.begin("d0:bc:c1:2b:1e:c7");  // Control negro
+  // ps5.begin("4c:b9:9b:de:f9:3b"); // Control blanco
+}
+
+void loop() {
+  // Si el control no está conectado, esperar
+  if (!ps5.isConnected()) {
+    delay(100);
+    return;
+  }
+
+  // Leer joystick y botones
+  int joyX = ps5.LStickX();          // valor entre -128 y 127
+  bool izq = (joyX < UMBRAL_IZQ);    // joystick a la izquierda
+  bool der = (joyX > UMBRAL_DER);    // joystick a la derecha
+  bool arr = ps5.Up();               // flecha arriba del D-Pad
+  bool abj = ps5.Down();             // flecha abajo del D-Pad
+  bool dis = ps5.R2Value() > 10;     // gatillo R2 (umbral para evitar activaciones accidentales)
+  bool sel = ps5.Cross();            // botón Cruz
+
+  // Solo se envía un byte cuando el estado cambia (presionado o soltado)
+
+  if (izq && !estadoIzq) {
+    estadoIzq = true;
+    Serial.write(CMD_IZQ);
+  } else if (!izq && estadoIzq) {
+    estadoIzq = false;
+    Serial.write(CMD_IZQ_OFF);
+  }
+
+  if (der && !estadoDer) {
+    estadoDer = true;
+    Serial.write(CMD_DER);
+  } else if (!der && estadoDer) {
+    estadoDer = false;
+    Serial.write(CMD_DER_OFF);
+  }
+
+  if (arr && !estadoArr) {
+    estadoArr = true;
+    Serial.write(CMD_ARR);
+  } else if (!arr && estadoArr) {
+    estadoArr = false;
+    Serial.write(CMD_ARR_OFF);
+  }
+
+  if (abj && !estadoAbj) {
+    estadoAbj = true;
+    Serial.write(CMD_ABJ);
+  } else if (!abj && estadoAbj) {
+    estadoAbj = false;
+    Serial.write(CMD_ABJ_OFF);
+  }
+
+  if (dis && !estadoDis) {
+    estadoDis = true;
+    Serial.write(CMD_DIS);
+  } else if (!dis && estadoDis) {
+    estadoDis = false;
+    Serial.write(CMD_DIS_OFF);
+  }
+
+  if (sel && !estadoSel) {
+    estadoSel = true;
+    Serial.write(CMD_SEL);
+  } else if (!sel && estadoSel) {
+    estadoSel = false;
+    Serial.write(CMD_SEL_OFF);
+  }
+
+  delay(20); // refresco a ~50 Hz
+}
